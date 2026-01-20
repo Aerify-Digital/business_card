@@ -2,7 +2,7 @@
  *  @filename   :   epdpaint.h
  *  @brief      :   Header file for epdpaint.cpp
  *  @author     :   Yehui from Waveshare
- *  
+ *
  *  Copyright (C) Waveshare     July 28 2017
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -28,32 +28,33 @@
 #define EPDPAINT_H
 
 // Display orientation
-#define ROTATE_0            0
-#define ROTATE_90           1
-#define ROTATE_180          2
-#define ROTATE_270          3
+#define ROTATE_0 0
+#define ROTATE_90 1
+#define ROTATE_180 2
+#define ROTATE_270 3
 
 // Color inverse. 1 or 0 = set or reset a bit if set a colored pixel
-#define IF_INVERT_COLOR     1
+#define IF_INVERT_COLOR 1
 
 #include "fonts.h"
 
-class Paint {
+class Paint
+{
 public:
-    Paint(unsigned char* image, int width, int height);
+    Paint(unsigned char *image, int width, int height);
     ~Paint();
     void Clear(int colored);
-    int  GetWidth(void);
+    int GetWidth(void);
     void SetWidth(int width);
-    int  GetHeight(void);
+    int GetHeight(void);
     void SetHeight(int height);
-    int  GetRotate(void);
+    int GetRotate(void);
     void SetRotate(int rotate);
-    unsigned char* GetImage(void);
+    unsigned char *GetImage(void);
     void DrawAbsolutePixel(int x, int y, int colored);
     void DrawPixel(int x, int y, int colored);
-    void DrawCharAt(int x, int y, char ascii_char, sFONT* font, int colored);
-    void DrawStringAt(int x, int y, const char* text, sFONT* font, int colored);
+    void DrawCharAt(int x, int y, char ascii_char, sFONT *font, int colored);
+    void DrawStringAt(int x, int y, const char *text, sFONT *font, int colored);
     void DrawLine(int x0, int y0, int x1, int y1, int colored);
     void DrawHorizontalLine(int x, int y, int width, int colored);
     void DrawVerticalLine(int x, int y, int height, int colored);
@@ -63,7 +64,7 @@ public:
     void DrawFilledCircle(int x, int y, int radius, int colored);
 
 private:
-    unsigned char* image;
+    unsigned char *image;
     int width;
     int height;
     int rotate;
@@ -72,4 +73,3 @@ private:
 #endif
 
 /* END OF FILE */
-

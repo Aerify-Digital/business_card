@@ -29,19 +29,22 @@
 #define EPDIF_H
 
 #include <Arduino.h>
+#include <SPI.h>
 #include "pindefs.h"
 
 class EpdIf
 {
 public:
-    EpdIf(void);
+    EpdIf(SPIClassRP2040 *spi);
     ~EpdIf(void);
 
-    static int IfInit(void);
     static void DigitalWrite(int pin, int value);
     static int DigitalRead(int pin);
     static void DelayMs(unsigned int delaytime);
-    static void SpiTransfer(unsigned char data);
+    void SpiTransfer(unsigned char data);
+
+private:
+    SPIClassRP2040 *spi_;
 };
 
 #endif

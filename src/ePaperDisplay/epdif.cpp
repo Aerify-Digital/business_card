@@ -28,8 +28,7 @@
 #include "epdif.h"
 #include <SPI.h>
 
-EpdIf::EpdIf() {
-};
+EpdIf::EpdIf(SPIClassRP2040 *spi) : spi_(spi) {};
 
 EpdIf::~EpdIf() {
 };
@@ -51,19 +50,7 @@ void EpdIf::DelayMs(unsigned int delaytime)
 
 void EpdIf::SpiTransfer(unsigned char data)
 {
-    digitalWrite(EPD_CS_PIN, LOW);
-    SPI.transfer(data);
-    digitalWrite(EPD_CS_PIN, HIGH);
-}
-
-int EpdIf::IfInit(void)
-{
-    pinMode(EPD_CS_PIN, OUTPUT);
-    pinMode(EPD_RST_PIN, OUTPUT);
-    pinMode(EPD_DC_PIN, OUTPUT);
-    pinMode(EPD_BUSY_PIN, INPUT);
-
-    SPI.begin();
-    SPI.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
-    return 0;
+    digitalWrite(SPI0_CS_PIN, LOW);
+    this->spi_->transfer(data);
+    digitalWrite(SPI0_CS_PIN, HIGH);
 }

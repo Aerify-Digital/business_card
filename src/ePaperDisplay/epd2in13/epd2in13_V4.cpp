@@ -37,11 +37,11 @@ Epd2in13::~Epd2in13() {
 function :	Pin definition
 parameter:
 ******************************************************************************/
-Epd2in13::Epd2in13()
+Epd2in13::Epd2in13(SPIClassRP2040 *spi) : EpdIf(spi)
 {
     reset_pin = EPD_RST_PIN;
     dc_pin = EPD_DC_PIN;
-    cs_pin = EPD_CS_PIN;
+    cs_pin = SPI0_CS_PIN;
     busy_pin = EPD_BUSY_PIN;
     width = EPD_WIDTH;
     height = EPD_HEIGHT;
@@ -129,11 +129,6 @@ parameter:
 ******************************************************************************/
 int Epd2in13::Init(char Mode)
 {
-    /* this calls the peripheral hardware interface, see epdif */
-    if (IfInit() != 0)
-    {
-        return -1;
-    }
 
     Reset();
 

@@ -38,12 +38,22 @@ void display_task(void *pvParameters)
     snprintf(msg.body, 128, "Display Task Started\r\n");
     msg.level = LOG_DEBUG;
     xQueueSend(usbQueue, (void *)&msg, 0);
-
 #ifdef EPD_2IN13
     unsigned char image[1050];
-    static Epd2in13 epd;
-    epd.Init(FAST);
+    static Epd2in13 epd(&SPI0);
+
+    if (epd.Init(FAST) != 0)
+    {
+        snprintf(msg.body, 128, "e-Paper init failed...\r\n");
+        msg.level = LOG_ERROR;
+        xQueueSend(usbQueue, (void *)&msg, 0);
+        return;
+    }
+    snprintf(msg.body, 128, "2.13inch e-Paper demo...\r\n ");
+    msg.level = LOG_INFO;
+    xQueueSend(usbQueue, (void *)&msg, 0);
     epd.Display_Fast(IMAGE_DATA_2IN13);
+
 #if 1
     snprintf(msg.body, 128, "epd FULL\r\n");
     msg.level = LOG_INFO;
@@ -80,7 +90,7 @@ void display_task(void *pvParameters)
     snprintf(msg.body, 128, "epd PART\r\n");
     msg.level = LOG_INFO;
     xQueueSend(usbQueue, (void *)&msg, 0);
-    epd.DisplayPartBaseImage(IMAGE_DATA);
+    epd.DisplayPartBaseImage(IMAGE_DATA_2IN13);
     char i = 0;
     for (i = 0; i < 10; i++)
     {
@@ -88,7 +98,7 @@ void display_task(void *pvParameters)
         msg.level = LOG_INFO;
         xQueueSend(usbQueue, (void *)&msg, 0);
         epd.Init(PART);
-        epd.DisplayPart(IMAGE_DATA);
+        epd.DisplayPart(IMAGE_DATA_2IN13);
         snprintf(msg.body, 128, "e-Paper PART Clear\r\n");
         msg.level = LOG_INFO;
         xQueueSend(usbQueue, (void *)&msg, 0);
@@ -110,7 +120,7 @@ void display_task(void *pvParameters)
     Paint paint(image, 48, 80); // width should be the multiple of 8
     UDOUBLE time_start_ms;
     UDOUBLE time_now_s;
-    static Epd2in66 epd;
+    static Epd2in66 epd(&SPI0);
     if (epd.Init() != 0)
     {
         snprintf(msg.body, 128, "e-Paper init failed...\r\n");
@@ -178,7 +188,7 @@ void display_task(void *pvParameters)
     {
         // Display handling code would go here
 
-        vTaskDelay(pdMS_TO_TICKS(1));
+        vTaskDelay(pdMS_TO_TICKS(300));
     }
 }
 
@@ -188,9 +198,15 @@ void setup()
     sleep_ms(3000);
     Serial.println("Aerify Digital Business Card Starting...");
     usbQueue = xQueueCreate(MSG_QUEUE_LEN, sizeof(Message_t));
-    displayQueue = xQueueCreate(16, sizeof(Message_t));
+    pinMode(SPI0_CS_PIN, OUTPUT);
+    pinMode(EPD_RST_PIN, OUTPUT);
+    pinMode(EPD_DC_PIN, OUTPUT);
+    pinMode(EPD_BUSY_PIN, INPUT);
+    SPI0.begin();
+    SPI0.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
+    // displayQueue = xQueueCreate(16, sizeof(Message_t));
     xTaskCreate(usb_task, "USB Task", 1024, NULL, 1, &usbTaskHandle);
-    xTaskCreate(display_task, "Display Task", 1024, NULL, 1, &displayTaskHandle);
+    xTaskCreate(display_task, "Display Task", 4096, NULL, 1, &displayTaskHandle);
 }
 
 void loop()

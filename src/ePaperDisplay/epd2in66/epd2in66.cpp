@@ -194,11 +194,11 @@ static const UBYTE WF_PARTIAL[159] =
 Epd2in66::~Epd2in66() {
 };
 
-Epd2in66::Epd2in66()
+Epd2in66::Epd2in66(SPIClassRP2040 *spi) : EpdIf(spi)
 {
     reset_pin = EPD_RST_PIN;
     dc_pin = EPD_DC_PIN;
-    cs_pin = EPD_CS_PIN;
+    cs_pin = SPI0_CS_PIN;
     busy_pin = EPD_BUSY_PIN;
     width = EPD_WIDTH;
     height = EPD_HEIGHT;
@@ -222,10 +222,6 @@ void Epd2in66::Reset(void)
  */
 int Epd2in66::Init(void)
 {
-    if (IfInit() != 0)
-    {
-        return -1;
-    }
     Reset();
 
     WaitUntilIdle();

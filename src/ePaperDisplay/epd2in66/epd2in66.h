@@ -40,7 +40,7 @@
 class Epd2in66 : EpdIf
 {
 public:
-    Epd2in66();
+    Epd2in66(SPIClassRP2040 *spi);
     ~Epd2in66();
     int Init(void);
     int Init_Partial(void);

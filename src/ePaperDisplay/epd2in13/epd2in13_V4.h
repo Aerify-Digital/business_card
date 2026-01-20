@@ -50,7 +50,7 @@ public:
     int bufheight;
     int count;
 
-    Epd2in13();
+    Epd2in13(SPIClassRP2040 *spi);
     ~Epd2in13();
     int Init(char Mode);
     void SendCommand(unsigned char command);

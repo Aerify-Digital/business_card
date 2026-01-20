@@ -23,10 +23,12 @@ typedef struct
     LogLevel_t level = LOG_NONE;
 } Message_t;
 
-static const int MSG_QUEUE_LEN = 64;
+static const int MSG_QUEUE_LEN = 16;
 
 static QueueHandle_t usbQueue = NULL;
 static QueueHandle_t displayQueue = NULL;
 
 static TaskHandle_t usbTaskHandle = NULL;
 static TaskHandle_t displayTaskHandle = NULL;
+
+SPIClassRP2040 SPI0(spi0, SPI0_MISO_PIN, SPI0_CS_PIN, SPI0_SCK_PIN, SPI0_MOSI_PIN);
