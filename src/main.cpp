@@ -192,12 +192,42 @@ void display_task(void *pvParameters)
     }
 }
 
+void buzzer_task(void *pvParameters)
+{
+    Message_t msg;
+    snprintf(msg.body, 128, "Buzzer Task Started\r\n");
+    msg.level = LOG_DEBUG;
+    xQueueSend(usbQueue, (void *)&msg, 0);
+    gpio_init(BUZZER_PIN);
+    gpio_set_dir(BUZZER_PIN, GPIO_OUT);
+    gpio_put(BUZZER_PIN, 0);
+
+    const float melody[] = {
+        midi_to_freq(NOTE_C1), midi_to_freq(NOTE_C3), midi_to_freq(NOTE_CS1), midi_to_freq(NOTE_C2),
+        midi_to_freq(NOTE_C1), midi_to_freq(NOTE_CS3), midi_to_freq(NOTE_FS1), midi_to_freq(NOTE_F2),
+        midi_to_freq(NOTE_G1), midi_to_freq(NOTE_G3), midi_to_freq(NOTE_A2), midi_to_freq(NOTE_G2),
+        midi_to_freq(NOTE_G1), midi_to_freq(NOTE_GS3), midi_to_freq(NOTE_G1), midi_to_freq(NOTE_F2)};
+
+    const int note_count = sizeof(melody) / sizeof(melody[0]);
+    const int note_duration_ms = 208; // 144 BPM 1/8 notes
+    while (1)
+    {
+        for (int i = 0; i < note_count; ++i)
+        {
+            play_tone(BUZZER_PIN, melody[i], note_duration_ms);
+        }
+        vTaskDelay(pdMS_TO_TICKS(1)); // brief pause between notes
+    }
+}
+
 void setup()
 {
     Serial.begin(115200);
     sleep_ms(3000);
     Serial.println("Aerify Digital Business Card Starting...");
     usbQueue = xQueueCreate(MSG_QUEUE_LEN, sizeof(Message_t));
+    displayQueue = xQueueCreate(MSG_QUEUE_LEN, sizeof(Message_t)); // TODO: add a display command struct
+    buzzerQueue = xQueueCreate(MSG_QUEUE_LEN, sizeof(BuzzerCommand_t));
     pinMode(SPI0_CS_PIN, OUTPUT);
     pinMode(EPD_RST_PIN, OUTPUT);
     pinMode(EPD_DC_PIN, OUTPUT);
@@ -207,6 +237,7 @@ void setup()
     // displayQueue = xQueueCreate(16, sizeof(Message_t));
     xTaskCreate(usb_task, "USB Task", 1024, NULL, 1, &usbTaskHandle);
     xTaskCreate(display_task, "Display Task", 4096, NULL, 1, &displayTaskHandle);
+    xTaskCreate(buzzer_task, "Buzzer Task", 1024, NULL, 1, &buzzerTaskHandle);
 }
 
 void loop()

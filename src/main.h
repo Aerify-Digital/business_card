@@ -14,6 +14,7 @@
 #include <vector>
 #include "debug.h"
 #include "pindefs.h"
+#include "buzzer.h"
 #include "ePaperDisplay/epd.h"
 #include "ePaperDisplay/epdpaint.h"
 
@@ -27,8 +28,10 @@ static const int MSG_QUEUE_LEN = 16;
 
 static QueueHandle_t usbQueue = NULL;
 static QueueHandle_t displayQueue = NULL;
+static QueueHandle_t buzzerQueue = NULL;
 
 static TaskHandle_t usbTaskHandle = NULL;
 static TaskHandle_t displayTaskHandle = NULL;
+static TaskHandle_t buzzerTaskHandle = NULL;
 
 SPIClassRP2040 SPI0(spi0, SPI0_MISO_PIN, SPI0_CS_PIN, SPI0_SCK_PIN, SPI0_MOSI_PIN);
