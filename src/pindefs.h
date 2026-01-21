@@ -85,11 +85,11 @@
 #ifndef BAT_CHARGE_EN_PIN
 #define BAT_CHARGE_EN_PIN 14
 #endif
-#ifndef BAT_STATUS1_PIN
-#define BAT_STATUS1_PIN 24
+#ifndef BAT_STAT1_PIN
+#define BAT_STAT1_PIN 24
 #endif
-#ifndef BAT_STATUS2_PIN
-#define BAT_STATUS2_PIN 25
+#ifndef BAT_STAT2_PIN
+#define BAT_STAT2_PIN 25
 #endif
 #ifndef BAT_VOLTAGE_PIN
 #define BAT_VOLTAGE_PIN 26 // ADC0

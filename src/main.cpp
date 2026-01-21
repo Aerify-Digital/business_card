@@ -1,6 +1,14 @@
 #include "main.h"
 
-void gpio_callback(uint gpio, uint32_t events)
+void stat_gpio_callback(uint gpio, uint32_t events)
+{
+    if (gpio == BAT_STAT1_PIN)
+        stat1_transitions++;
+    if (gpio == BAT_STAT2_PIN)
+        stat2_transitions++;
+}
+
+void btn_gpio_callback(uint gpio, uint32_t events)
 {
     Message_t msg;
     uint32_t now = to_ms_since_boot(get_absolute_time());
@@ -86,7 +94,7 @@ void button_task(void *pvParameters)
         gpio_init(pin);
         gpio_set_dir(pin, GPIO_IN);
         gpio_pull_up(pin);
-        gpio_set_irq_enabled_with_callback(pin, GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
+        gpio_set_irq_enabled_with_callback(pin, GPIO_IRQ_EDGE_FALL, true, &btn_gpio_callback);
     }
 
     while (1)
@@ -106,14 +114,19 @@ void bms_task(void *pvParameters)
     gpio_set_dir(BAT_CHARGE_EN_PIN, GPIO_OUT);
     gpio_put(BAT_CHARGE_EN_PIN, 1);
 
-    gpio_init(BAT_STATUS1_PIN);
-    gpio_set_dir(BAT_STATUS1_PIN, GPIO_IN);
-    gpio_init(BAT_STATUS2_PIN);
-    gpio_set_dir(BAT_STATUS2_PIN, GPIO_IN);
+    gpio_init(BAT_STAT1_PIN);
+    gpio_set_dir(BAT_STAT1_PIN, GPIO_IN);
+    gpio_disable_pulls(BAT_STAT1_PIN);
+    gpio_init(BAT_STAT2_PIN);
+    gpio_set_dir(BAT_STAT2_PIN, GPIO_IN);
+    gpio_disable_pulls(BAT_STAT2_PIN);
 
     gpio_init(BAT_VOLTAGE_PIN);
     adc_init();
     adc_gpio_init(BAT_VOLTAGE_PIN);
+
+    gpio_set_irq_enabled_with_callback(BAT_STAT1_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &stat_gpio_callback);
+    gpio_set_irq_enabled_with_callback(BAT_STAT2_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &stat_gpio_callback);
 
     auto measure_battery_voltage = []()
     {
@@ -130,17 +143,64 @@ void bms_task(void *pvParameters)
         return voltage;
     };
 
+    auto read_status = []()
+    {
+        bool STAT1 = gpio_get(BAT_STAT1_PIN);
+        bool STAT2 = gpio_get(BAT_STAT2_PIN);
+        bool STAT1_flashing = stat1_transitions > 0;
+        bool STAT2_flashing = stat2_transitions > 0;
+        stat1_transitions = 0;
+        stat2_transitions = 0;
+        const char *result;
+        if (STAT1_flashing && STAT2_flashing)
+        {
+            result = "EMPTY";
+        }
+        else if (STAT1 && !STAT2)
+        {
+            result = "CHARGING_COMPLETE";
+        }
+        else if (!STAT1 && STAT2)
+        {
+            result = "CHARGING";
+        }
+        else if (STAT1 && STAT2)
+        {
+            result = "FAULT_CONDITION";
+        }
+        else
+        {
+            result = "DISCHARGING";
+        }
+        if (result == nullptr)
+            result = "UNKNOWN";
+
+        if (result == "FAULT_CONDITION" || result == "EMPTY" || result == "CHARGING_COMPLETE")
+        {
+            gpio_put(BAT_CHARGE_EN_PIN, 0);
+            vTaskDelete(NULL);
+        }
+        else
+        {
+            gpio_put(BAT_CHARGE_EN_PIN, 1);
+        }
+        return result;
+    };
+
     vTaskDelay(pdMS_TO_TICKS(2000));
 
     float voltage = 0.0f;
+    const char *status = read_status();
+
     voltage = measure_battery_voltage();
-    snprintf(msg.body, 128, "Battery Voltage: %.2fV\r\n", voltage);
+    snprintf(msg.body, 128, "%s Battery Voltage: %.2fV\r\n", status, voltage);
     msg.level = LOG_INFO;
     xQueueSend(usbQueue, (void *)&msg, 0);
     while (1)
     {
+        status = read_status();
         voltage = measure_battery_voltage();
-        snprintf(msg.body, 128, "Battery Voltage: %.2fV\r\n", voltage);
+        snprintf(msg.body, 128, "%s Battery Voltage: %.2fV\r\n", status, voltage);
         msg.level = LOG_INFO;
         xQueueSend(usbQueue, (void *)&msg, 0);
         vTaskDelay(pdMS_TO_TICKS(1000));

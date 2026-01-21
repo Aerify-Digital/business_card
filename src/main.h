@@ -41,3 +41,6 @@ static TaskHandle_t buttonTaskHandle = NULL;
 SPIClassRP2040 SPI0(spi0, SPI0_MISO_PIN, SPI0_CS_PIN, SPI0_SCK_PIN, SPI0_MOSI_PIN);
 
 uint32_t last_press_time[BUTTON_COUNT] = {0};
+
+volatile uint32_t stat1_transitions = 0;
+volatile uint32_t stat2_transitions = 0;
