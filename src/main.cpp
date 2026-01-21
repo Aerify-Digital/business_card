@@ -133,11 +133,24 @@ void display_task(void *pvParameters)
     snprintf(msg.body, 128, "Display Task Started\r\n");
     msg.level = LOG_DEBUG;
     xQueueSend(usbQueue, (void *)&msg, 0);
+#ifdef EPD_2IN13
+    unsigned char image[1050];
+    static Epd2in13 epd(&SPI0);
 
+#elif defined(EPD_2IN66)
+    UBYTE image[500];
+    Paint paint(image, 48, 80); // width should be the multiple of 8
+    UDOUBLE time_start_ms;
+    UDOUBLE time_now_s;
+    static Epd2in66 epd(&SPI0);
+
+#else
+#error "No e-Paper display selected"
+#endif
     while (1)
     {
+
 #ifdef EPD_2IN13
-        unsigned char image[1050];
         static Epd2in13 epd(&SPI0);
 
         if (epd.Init(FAST) != 0)
@@ -156,7 +169,13 @@ void display_task(void *pvParameters)
         snprintf(msg.body, 128, "epd FULL\r\n");
         msg.level = LOG_INFO;
         xQueueSend(usbQueue, (void *)&msg, 0);
-        epd.Init(FULL);
+        if (epd.Init(FULL) != 0)
+        {
+            snprintf(msg.body, 128, "e-Paper init failed...\r\n");
+            msg.level = LOG_ERROR;
+            xQueueSend(usbQueue, (void *)&msg, 0);
+            return;
+        }
         Paint paint(image, epd.bufwidth * 8, epd.bufheight); // width should be the multiple of 8
 
         paint.Clear(UNCOLORED);
@@ -195,19 +214,37 @@ void display_task(void *pvParameters)
             snprintf(msg.body, 128, "e-Paper PART IMAGE_DATA\r\n");
             msg.level = LOG_INFO;
             xQueueSend(usbQueue, (void *)&msg, 0);
-            epd.Init(PART);
+            if (epd.Init(PART) != 0)
+            {
+                snprintf(msg.body, 128, "e-Paper init failed...\r\n");
+                msg.level = LOG_ERROR;
+                xQueueSend(usbQueue, (void *)&msg, 0);
+                return;
+            }
             epd.DisplayPart(IMAGE_DATA_2IN13);
             snprintf(msg.body, 128, "e-Paper PART Clear\r\n");
             msg.level = LOG_INFO;
             xQueueSend(usbQueue, (void *)&msg, 0);
-            epd.Init(PART);
+            if (epd.Init(PART) != 0)
+            {
+                snprintf(msg.body, 128, "e-Paper init failed...\r\n");
+                msg.level = LOG_ERROR;
+                xQueueSend(usbQueue, (void *)&msg, 0);
+                return;
+            }
             epd.ClearPart();
             vTaskDelay(pdMS_TO_TICKS(2000));
         }
 
 #endif
 
-        epd.Init(FULL);
+        if (epd.Init(FULL) != 0)
+        {
+            snprintf(msg.body, 128, "e-Paper init failed...\r\n");
+            msg.level = LOG_ERROR;
+            xQueueSend(usbQueue, (void *)&msg, 0);
+            return;
+        }
         snprintf(msg.body, 128, "e-Paper clear and sleep\r\n");
         msg.level = LOG_INFO;
         xQueueSend(usbQueue, (void *)&msg, 0);
@@ -246,7 +283,13 @@ void display_task(void *pvParameters)
 #endif
 
 #if 1
-        epd.Init_Partial();
+        if (epd.Init_Partial() != 0)
+        {
+            snprintf(msg.body, 128, "e-Paper init failed...\r\n");
+            msg.level = LOG_ERROR;
+            xQueueSend(usbQueue, (void *)&msg, 0);
+            return;
+        }
         epd.Clear();
         snprintf(msg.body, 128, "partial display___ \r\n ");
         msg.level = LOG_INFO;
@@ -271,7 +314,13 @@ void display_task(void *pvParameters)
         }
 #endif
 
-        epd.Init();
+        if (epd.Init() != 0)
+        {
+            snprintf(msg.body, 128, "e-Paper init failed...\r\n");
+            msg.level = LOG_ERROR;
+            xQueueSend(usbQueue, (void *)&msg, 0);
+            return;
+        }
         snprintf(msg.body, 128, "clear and sleep......\r\n ");
         msg.level = LOG_INFO;
         xQueueSend(usbQueue, (void *)&msg, 0);
@@ -329,6 +378,73 @@ void buzzer_task(void *pvParameters)
         NOTE_AS4,
         NOTE_AS4,
         NOTE_REST,
+
+        NOTE_E2,
+        NOTE_E2,
+        NOTE_E4,
+        NOTE_E2,
+        NOTE_E2,
+        NOTE_D4,
+        NOTE_E2,
+        NOTE_E2,
+        NOTE_C4,
+        NOTE_E2,
+        NOTE_E2,
+        NOTE_AS4,
+        NOTE_E2,
+        NOTE_E2,
+        NOTE_B4,
+        NOTE_C4,
+        NOTE_E2,
+        NOTE_E2,
+        NOTE_E4,
+        NOTE_E2,
+        NOTE_E2,
+        NOTE_D4,
+        NOTE_E2,
+        NOTE_E2,
+        NOTE_C4,
+        NOTE_E2,
+        NOTE_E2,
+        NOTE_AS4,
+        NOTE_AS4,
+        NOTE_AS4,
+        NOTE_AS4,
+        NOTE_REST,
+
+        NOTE_A3,
+        NOTE_A3,
+        NOTE_A5,
+        NOTE_A3,
+        NOTE_A3,
+        NOTE_G4,
+        NOTE_A3,
+        NOTE_A3,
+        NOTE_F4,
+        NOTE_A3,
+        NOTE_A3,
+        NOTE_DS4,
+        NOTE_A3,
+        NOTE_A3,
+        NOTE_E4,
+        NOTE_F4,
+        NOTE_A3,
+        NOTE_A3,
+        NOTE_A5,
+        NOTE_A3,
+        NOTE_A3,
+        NOTE_G4,
+        NOTE_A3,
+        NOTE_A3,
+        NOTE_F4,
+        NOTE_A3,
+        NOTE_A3,
+        NOTE_DS4,
+        NOTE_DS4,
+        NOTE_DS4,
+        NOTE_DS4,
+        NOTE_REST,
+
     };
     const int note_count = sizeof(doom_melody) / sizeof(doom_melody[0]);
     const int note_duration_ms = 150; // 200 BPM 1/8 notes
@@ -336,10 +452,12 @@ void buzzer_task(void *pvParameters)
     while (1)
     {
 
+        /*
         for (int i = 0; i < note_count; ++i)
         {
             play_tone(BUZZER_PIN, midi_to_freq(doom_melody[i]), note_duration_ms);
         }
+        */
 
         vTaskDelay(pdMS_TO_TICKS(1));
     }
@@ -359,10 +477,10 @@ void setup()
     pinMode(EPD_BUSY_PIN, INPUT);
     SPI0.begin();
     SPI0.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
-    xTaskCreate(usb_task, "USB Task", 1024, NULL, 1, &usbTaskHandle);
-    xTaskCreate(display_task, "Display Task", 2048, NULL, 1, &displayTaskHandle);
+    xTaskCreate(usb_task, "USB Task", 1024, NULL, 3, &usbTaskHandle);
+    xTaskCreate(display_task, "Display Task", 2048, NULL, 2, &displayTaskHandle);
     xTaskCreate(buzzer_task, "Buzzer Task", 1024, NULL, 1, &buzzerTaskHandle);
-    xTaskCreate(button_task, "Button Task", 1024, NULL, 1, NULL);
+    xTaskCreate(button_task, "Button Task", 512, NULL, 1, &buttonTaskHandle);
 }
 
 void loop()

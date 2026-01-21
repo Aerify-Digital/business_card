@@ -34,6 +34,7 @@ static QueueHandle_t buzzerQueue = NULL;
 static TaskHandle_t usbTaskHandle = NULL;
 static TaskHandle_t displayTaskHandle = NULL;
 static TaskHandle_t buzzerTaskHandle = NULL;
+static TaskHandle_t buttonTaskHandle = NULL;
 
 SPIClassRP2040 SPI0(spi0, SPI0_MISO_PIN, SPI0_CS_PIN, SPI0_SCK_PIN, SPI0_MOSI_PIN);
 
