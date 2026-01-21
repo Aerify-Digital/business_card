@@ -15,6 +15,7 @@
 #include "debug.h"
 #include "pindefs.h"
 #include "buzzer.h"
+#include "buttons.h"
 #include "ePaperDisplay/epd.h"
 #include "ePaperDisplay/epdpaint.h"
 
@@ -35,3 +36,5 @@ static TaskHandle_t displayTaskHandle = NULL;
 static TaskHandle_t buzzerTaskHandle = NULL;
 
 SPIClassRP2040 SPI0(spi0, SPI0_MISO_PIN, SPI0_CS_PIN, SPI0_SCK_PIN, SPI0_MOSI_PIN);
+
+uint32_t last_press_time[BUTTON_COUNT] = {0};

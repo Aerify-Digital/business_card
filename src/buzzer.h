@@ -152,5 +152,7 @@ void play_tone(uint pin, float freq_hz, int duration_ms)
     int played_ms = (int)(cycles * 2 * half_period_us / 1000.0f);
     if (played_ms < duration_ms)
         sleep_ms(duration_ms - played_ms);
+    gpio_put(pin, 0);
 };
+
 #endif
