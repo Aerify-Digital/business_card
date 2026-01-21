@@ -7,6 +7,7 @@
 #include <string.h>
 #include <string>
 #include "pico/stdlib.h"
+#include "hardware/adc.h"
 #include "hardware/i2c.h"
 #include "hardware/irq.h"
 #include "hardware/pwm.h"
@@ -32,6 +33,7 @@ static QueueHandle_t displayQueue = NULL;
 static QueueHandle_t buzzerQueue = NULL;
 
 static TaskHandle_t usbTaskHandle = NULL;
+static TaskHandle_t bmsTaskHandle = NULL;
 static TaskHandle_t displayTaskHandle = NULL;
 static TaskHandle_t buzzerTaskHandle = NULL;
 static TaskHandle_t buttonTaskHandle = NULL;

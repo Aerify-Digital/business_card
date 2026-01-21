@@ -95,6 +95,58 @@ void button_task(void *pvParameters)
     }
 }
 
+void bms_task(void *pvParameters)
+{
+    Message_t msg;
+    snprintf(msg.body, 128, "BMS Task Started\r\n");
+    msg.level = LOG_DEBUG;
+    xQueueSend(usbQueue, (void *)&msg, 0);
+
+    gpio_init(BAT_CHARGE_EN_PIN);
+    gpio_set_dir(BAT_CHARGE_EN_PIN, GPIO_OUT);
+    gpio_put(BAT_CHARGE_EN_PIN, 1);
+
+    gpio_init(BAT_STATUS1_PIN);
+    gpio_set_dir(BAT_STATUS1_PIN, GPIO_IN);
+    gpio_init(BAT_STATUS2_PIN);
+    gpio_set_dir(BAT_STATUS2_PIN, GPIO_IN);
+
+    gpio_init(BAT_VOLTAGE_PIN);
+    adc_init();
+    adc_gpio_init(BAT_VOLTAGE_PIN);
+
+    auto measure_battery_voltage = []()
+    {
+        // take a sample average to reduce noise
+        const int samples = 5;
+        uint32_t total = 0;
+        for (int i = 0; i < samples; ++i)
+        {
+            adc_select_input(0);
+            total += (adc_read() * 2);
+            sleep_us(10);
+        }
+        float voltage = (float)total / samples * 3.2f / (1 << 12);
+        return voltage;
+    };
+
+    vTaskDelay(pdMS_TO_TICKS(2000));
+
+    float voltage = 0.0f;
+    voltage = measure_battery_voltage();
+    snprintf(msg.body, 128, "Battery Voltage: %.2fV\r\n", voltage);
+    msg.level = LOG_INFO;
+    xQueueSend(usbQueue, (void *)&msg, 0);
+    while (1)
+    {
+        voltage = measure_battery_voltage();
+        snprintf(msg.body, 128, "Battery Voltage: %.2fV\r\n", voltage);
+        msg.level = LOG_INFO;
+        xQueueSend(usbQueue, (void *)&msg, 0);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
 void usb_task(void *pvParameters)
 {
     DEBUG_PRINTLN("USB Task Started");
@@ -477,7 +529,8 @@ void setup()
     pinMode(EPD_BUSY_PIN, INPUT);
     SPI0.begin();
     SPI0.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
-    xTaskCreate(usb_task, "USB Task", 1024, NULL, 3, &usbTaskHandle);
+    xTaskCreate(usb_task, "USB Task", 1024, NULL, 4, &usbTaskHandle);
+    xTaskCreate(bms_task, "BMS Task", 1024, NULL, 3, &bmsTaskHandle);
     xTaskCreate(display_task, "Display Task", 2048, NULL, 2, &displayTaskHandle);
     xTaskCreate(buzzer_task, "Buzzer Task", 1024, NULL, 1, &buzzerTaskHandle);
     xTaskCreate(button_task, "Button Task", 512, NULL, 1, &buttonTaskHandle);
