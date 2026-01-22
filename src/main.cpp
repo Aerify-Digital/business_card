@@ -1,80 +1,5 @@
 #include "main.h"
 
-void stat_gpio_callback(uint gpio, uint32_t events)
-{
-    if (gpio == BAT_STAT1_PIN)
-        stat1_transitions++;
-    if (gpio == BAT_STAT2_PIN)
-        stat2_transitions++;
-}
-
-void btn_gpio_callback(uint gpio, uint32_t events)
-{
-    Message_t msg;
-    uint32_t now = to_ms_since_boot(get_absolute_time());
-    int idx = -1;
-    for (int i = 0; i < BUTTON_COUNT; ++i)
-    {
-        if (gpio == button_pins[i])
-        {
-            idx = i;
-            break;
-        }
-    }
-    if (idx == -1)
-        return;
-
-    if (now - last_press_time[idx] < BTN_DEBOUNCE_MS)
-    {
-        return;
-    }
-    last_press_time[idx] = now;
-
-    switch (gpio)
-    {
-    case BTN_DPAD_UP_PIN:
-        snprintf(msg.body, 128, "Button UP Pressed\r\n");
-        msg.level = LOG_DEBUG;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-        break;
-    case BTN_DPAD_DOWN_PIN:
-        snprintf(msg.body, 128, "Button DOWN Pressed\r\n");
-        msg.level = LOG_DEBUG;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-        break;
-    case BTN_DPAD_LEFT_PIN:
-        snprintf(msg.body, 128, "Button LEFT Pressed\r\n");
-        msg.level = LOG_DEBUG;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-        break;
-    case BTN_DPAD_RIGHT_PIN:
-        snprintf(msg.body, 128, "Button RIGHT Pressed\r\n");
-        msg.level = LOG_DEBUG;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-        break;
-    case BTN_DPAD_CENTER_PIN:
-        snprintf(msg.body, 128, "Button CENTER Pressed\r\n");
-        msg.level = LOG_DEBUG;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-        break;
-    case BTN_A_PIN:
-        snprintf(msg.body, 128, "Button A Pressed\r\n");
-        msg.level = LOG_DEBUG;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-        break;
-    case BTN_B_PIN:
-        snprintf(msg.body, 128, "Button B Pressed\r\n");
-        msg.level = LOG_DEBUG;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-        break;
-    default:
-        sniprintf(msg.body, 128, "Unknown Button %d Pressed\r\n", gpio);
-        msg.level = LOG_WARN;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-        break;
-    }
-}
-
 void button_task(void *pvParameters)
 {
     // Configure button GPIOs with pull-ups and interrupts
@@ -184,16 +109,15 @@ void bms_task(void *pvParameters)
 
     float voltage = 0.0f;
     const char *status = read_status();
-
     voltage = measure_battery_voltage();
-    snprintf(msg.body, 128, "%s %.2fV\r\n", status, voltage);
+    snprintf(msg.body, 128, ">battery_voltage:%.2fV\r\n", voltage);
     msg.level = LOG_DEBUG;
     xQueueSend(usbQueue, (void *)&msg, 0);
     while (1)
     {
         status = read_status();
         voltage = measure_battery_voltage();
-        snprintf(msg.body, 128, "%s %.2fV\r\n", status, voltage);
+        snprintf(msg.body, 128, ">battery_voltage:%.2fV\r\n", voltage);
         msg.level = LOG_DEBUG;
         xQueueSend(usbQueue, (void *)&msg, 0);
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -232,208 +156,135 @@ void usb_task(void *pvParameters)
     }
 }
 
+void sd_task(void *pvParameters)
+{
+    Message_t msg;
+    snprintf(msg.body, 128, "SD Task Started\r\n");
+    msg.level = LOG_DEBUG;
+    xQueueSend(usbQueue, (void *)&msg, 0);
+    bool initialized = false;
+    if (xSemaphoreTake(spi0_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
+    {
+
+        initialized = beginSD(SPI0);
+        xSemaphoreGive(spi0_mutex);
+    }
+    else
+    {
+        snprintf(msg.body, 128, "Failed to obtain SPI mutex for SD Card initialization!\r\n");
+        msg.level = LOG_ERROR;
+        xQueueSend(usbQueue, (void *)&msg, 0);
+    }
+    if (!initialized)
+    {
+        snprintf(msg.body, 128, "SD Card initialization failed!\r\n");
+        msg.level = LOG_ERROR;
+        xQueueSend(usbQueue, (void *)&msg, 0);
+    }
+    else
+    {
+        snprintf(msg.body, 128, "SD Card initialized.\r\n");
+        msg.level = LOG_INFO;
+        xQueueSend(usbQueue, (void *)&msg, 0);
+    }
+
+    while (1)
+    {
+        if (!initialized)
+        {
+            snprintf(msg.body, 128, "Attempting SD Card re-initialization...\r\n");
+            msg.level = LOG_INFO;
+            xQueueSend(usbQueue, (void *)&msg, 0);
+            if (xSemaphoreTake(spi0_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
+            {
+                initialized = beginSD(SPI0);
+                xSemaphoreGive(spi0_mutex);
+            }
+            else
+            {
+                snprintf(msg.body, 128, "Failed to obtain SPI mutex for SD Card re-initialization!\r\n");
+                msg.level = LOG_ERROR;
+                xQueueSend(usbQueue, (void *)&msg, 0);
+                continue;
+            }
+            if (initialized)
+            {
+                snprintf(msg.body, 128, "SD Card re-initialized successfully.\r\n");
+                msg.level = LOG_INFO;
+                xQueueSend(usbQueue, (void *)&msg, 0);
+            }
+            else
+            {
+                snprintf(msg.body, 128, "SD Card re-initialization failed!\r\n");
+                msg.level = LOG_ERROR;
+                xQueueSend(usbQueue, (void *)&msg, 0);
+            }
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+
+        if (xSemaphoreTake(spi0_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
+        {
+
+            bool present = cardPresent(SPI0);
+            if (!present)
+            {
+                initialized = false;
+                snprintf(msg.body, 128, "SD Card not present!\r\n");
+                msg.level = LOG_WARN;
+                xQueueSend(usbQueue, (void *)&msg, 0);
+            }
+            xSemaphoreGive(spi0_mutex);
+        }
+        else
+        {
+            snprintf(msg.body, 128, "Failed to obtain SPI mutex for SD Card re-initialization!\r\n");
+            msg.level = LOG_ERROR;
+            xQueueSend(usbQueue, (void *)&msg, 0);
+            continue;
+        }
+
+        // TODO: Add queue and file operations here
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
 void display_task(void *pvParameters)
 {
     Message_t msg;
     snprintf(msg.body, 128, "Display Task Started\r\n");
     msg.level = LOG_DEBUG;
     xQueueSend(usbQueue, (void *)&msg, 0);
+
 #ifdef EPD_2IN13
     unsigned char image[1050];
     static Epd2in13 epd(&SPI0);
-    Paint paint(image, epd.bufwidth * 8, epd.bufheight); // width should be the multiple of 8
 #elif defined(EPD_2IN66)
     UBYTE image[500];
-    Paint paint(image, 48, 80); // width should be the multiple of 8
-    UDOUBLE time_start_ms;
-    UDOUBLE time_now_s;
     static Epd2in66 epd(&SPI0);
-
 #else
 #error "No e-Paper display selected"
 #endif
+
+    Paint paint(image, EPD_WIDTH * 8, EPD_HEIGHT);
     while (1)
     {
-
+        if (xSemaphoreTake(spi0_mutex, portMAX_DELAY) == pdTRUE)
+        {
 #ifdef EPD_2IN13
-        static Epd2in13 epd(&SPI0);
 
-        if (epd.Init(FAST) != 0)
-        {
-            snprintf(msg.body, 128, "e-Paper init failed...\r\n");
-            msg.level = LOG_ERROR;
-            xQueueSend(usbQueue, (void *)&msg, 0);
-            return;
-        }
-        snprintf(msg.body, 128, "Starting 2.13inch e-Paper demo...\r\n ");
-        msg.level = LOG_INFO;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-        epd.Display_Fast(IMAGE_DATA_2IN13);
-
-#if 1
-        snprintf(msg.body, 128, "epd FULL\r\n");
-        msg.level = LOG_INFO;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-        if (epd.Init(FULL) != 0)
-        {
-            snprintf(msg.body, 128, "e-Paper init failed...\r\n");
-            msg.level = LOG_ERROR;
-            xQueueSend(usbQueue, (void *)&msg, 0);
-            return;
-        }
-
-        paint.Clear(UNCOLORED);
-        paint.DrawStringAt(8, 2, "e-Paper Demo", &Font12, COLORED);
-        paint.DrawStringAt(8, 20, "Hello world", &Font12, COLORED);
-        epd.Display1(image); // 1
-
-        paint.Clear(UNCOLORED);
-        paint.DrawRectangle(2, 2, 50, 50, COLORED);
-        paint.DrawLine(2, 2, 50, 50, COLORED);
-        paint.DrawLine(2, 50, 50, 2, COLORED);
-        paint.DrawFilledRectangle(52, 2, 100, 50, COLORED);
-        paint.DrawLine(52, 2, 100, 50, UNCOLORED);
-        paint.DrawLine(100, 2, 52, 50, UNCOLORED);
-        epd.Display1(image); // 2
-
-        paint.Clear(UNCOLORED);
-        paint.DrawCircle(25, 25, 20, COLORED);
-        paint.DrawFilledCircle(75, 25, 20, COLORED);
-        epd.Display1(image); // 3
-
-        paint.Clear(UNCOLORED);
-        epd.Display1(image); // 4
-
-        vTaskDelay(pdMS_TO_TICKS(2000));
-
-#else
-
-        snprintf(msg.body, 128, "epd PART\r\n");
-        msg.level = LOG_INFO;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-        epd.DisplayPartBaseImage(IMAGE_DATA_2IN13);
-        char i = 0;
-        for (i = 0; i < 10; i++)
-        {
-            snprintf(msg.body, 128, "e-Paper PART IMAGE_DATA\r\n");
-            msg.level = LOG_INFO;
-            xQueueSend(usbQueue, (void *)&msg, 0);
-            if (epd.Init(PART) != 0)
-            {
-                snprintf(msg.body, 128, "e-Paper init failed...\r\n");
-                msg.level = LOG_ERROR;
-                xQueueSend(usbQueue, (void *)&msg, 0);
-                return;
-            }
-            epd.DisplayPart(IMAGE_DATA_2IN13);
-            snprintf(msg.body, 128, "e-Paper PART Clear\r\n");
-            msg.level = LOG_INFO;
-            xQueueSend(usbQueue, (void *)&msg, 0);
-            if (epd.Init(PART) != 0)
-            {
-                snprintf(msg.body, 128, "e-Paper init failed...\r\n");
-                msg.level = LOG_ERROR;
-                xQueueSend(usbQueue, (void *)&msg, 0);
-                return;
-            }
-            epd.ClearPart();
-            vTaskDelay(pdMS_TO_TICKS(2000));
-        }
-
-#endif
-
-        if (epd.Init(FULL) != 0)
-        {
-            snprintf(msg.body, 128, "e-Paper init failed...\r\n");
-            msg.level = LOG_ERROR;
-            xQueueSend(usbQueue, (void *)&msg, 0);
-            return;
-        }
-        snprintf(msg.body, 128, "e-Paper clear\r\n");
-        msg.level = LOG_INFO;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-        epd.Clear();
-        epd.Sleep();
 #elif defined(EPD_2IN66)
-        UBYTE image[500];
-        Paint paint(image, 48, 80); // width should be the multiple of 8
-        UDOUBLE time_start_ms;
-        UDOUBLE time_now_s;
-        static Epd2in66 epd(&SPI0);
-        if (epd.Init() != 0)
-        {
-            snprintf(msg.body, 128, "e-Paper init failed...\r\n");
-            msg.level = LOG_ERROR;
-            xQueueSend(usbQueue, (void *)&msg, 0);
-            return;
-        }
-        snprintf(msg.body, 128, "Starting 2.66inch e-Paper demo...\r\n ");
-        msg.level = LOG_INFO;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-        snprintf(msg.body, 128, "e-Paper Clear...\r\n ");
-        msg.level = LOG_INFO;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-        epd.Clear();
-
-        paint.SetRotate(ROTATE_270);
-
-#if 1
-        snprintf(msg.body, 128, "draw image...\r\n ");
-        msg.level = LOG_INFO;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-        epd.DisplayFrame(IMAGE_DATA);
-        vTaskDelay(pdMS_TO_TICKS(4000));
-        epd.Clear();
-#endif
-
-#if 1
-        if (epd.Init_Partial() != 0)
-        {
-            snprintf(msg.body, 128, "e-Paper init failed...\r\n");
-            msg.level = LOG_ERROR;
-            xQueueSend(usbQueue, (void *)&msg, 0);
-            return;
-        }
-        epd.Clear();
-        snprintf(msg.body, 128, "partial display___ \r\n ");
-        msg.level = LOG_INFO;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-        UBYTE i;
-        time_start_ms = millis();
-        for (i = 0; i < 10; i++)
-        {
-            time_now_s = (millis() - time_start_ms) / 1000;
-            char time_string[] = {'0', '0', ':', '0', '0', '\0'};
-            time_string[0] = time_now_s / 60 / 10 + '0';
-            time_string[1] = time_now_s / 60 % 10 + '0';
-            time_string[3] = time_now_s % 60 / 10 + '0';
-            time_string[4] = time_now_s % 60 % 10 + '0';
-
-            paint.Clear(UNCOLORED);
-            paint.DrawStringAt(10, 10, time_string, &Font16, COLORED);
-            snprintf(msg.body, 128, "refresh------\r\n ");
-            msg.level = LOG_INFO;
-            xQueueSend(usbQueue, (void *)&msg, 0);
-            epd.DisplayFrame_part(paint.GetImage(), 20, 100, 48, 80);
-        }
-#endif
-
-        if (epd.Init() != 0)
-        {
-            snprintf(msg.body, 128, "e-Paper init failed...\r\n");
-            msg.level = LOG_ERROR;
-            xQueueSend(usbQueue, (void *)&msg, 0);
-            return;
-        }
-        snprintf(msg.body, 128, "clear and sleep......\r\n ");
-        msg.level = LOG_INFO;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-        epd.Clear();
-        epd.Sleep();
 
 #else
 #error "No e-Paper display selected"
 #endif
+            xSemaphoreGive(spi0_mutex);
+        }
+        else
+        {
+            snprintf(msg.body, 128, "Failed to take SPI0 mutex for e-Paper display\r\n");
+            msg.level = LOG_ERROR;
+            xQueueSend(usbQueue, (void *)&msg, 0);
+        }
 
         vTaskDelay(pdMS_TO_TICKS(1));
     }
@@ -488,9 +339,11 @@ void setup()
     pinMode(EPD_BUSY_PIN, INPUT);
     SPI0.begin();
     SPI0.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
-    xTaskCreate(usb_task, "USB Task", 1024, NULL, 4, &usbTaskHandle);
-    xTaskCreate(bms_task, "BMS Task", 1024, NULL, 3, &bmsTaskHandle);
-    xTaskCreate(display_task, "Display Task", 2048, NULL, 2, &displayTaskHandle);
+    spi0_mutex = xSemaphoreCreateMutex();
+    xTaskCreate(usb_task, "USB Task", 1024, NULL, 1, &usbTaskHandle);
+    xTaskCreate(bms_task, "BMS Task", 1024, NULL, 1, &bmsTaskHandle);
+    xTaskCreate(sd_task, "SD Task", 4096, NULL, 1, &sdTaskHandle);
+    xTaskCreate(display_task, "Display Task", 4096, NULL, 1, &displayTaskHandle);
     xTaskCreate(buzzer_task, "Buzzer Task", 1024, NULL, 1, &buzzerTaskHandle);
     xTaskCreate(button_task, "Button Task", 512, NULL, 1, &buttonTaskHandle);
 }

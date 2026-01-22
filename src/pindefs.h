@@ -103,10 +103,10 @@
 #define BTN_DPAD_DOWN_PIN 29
 #endif
 #ifndef BTN_DPAD_LEFT_PIN
-#define BTN_DPAD_LEFT_PIN 27
+#define BTN_DPAD_LEFT_PIN 28
 #endif
 #ifndef BTN_DPAD_RIGHT_PIN
-#define BTN_DPAD_RIGHT_PIN 28
+#define BTN_DPAD_RIGHT_PIN 27
 #endif
 #ifndef BTN_DPAD_CENTER_PIN
 #define BTN_DPAD_CENTER_PIN 17

@@ -17,6 +17,7 @@
 #include "pindefs.h"
 #include "buzzer.h"
 #include "buttons.h"
+#include "sd_card.h"
 #include "ePaperDisplay/epd.h"
 #include "ePaperDisplay/epdpaint.h"
 
@@ -34,9 +35,12 @@ static QueueHandle_t buzzerQueue = NULL;
 
 static TaskHandle_t usbTaskHandle = NULL;
 static TaskHandle_t bmsTaskHandle = NULL;
+static TaskHandle_t sdTaskHandle = NULL;
 static TaskHandle_t displayTaskHandle = NULL;
 static TaskHandle_t buzzerTaskHandle = NULL;
 static TaskHandle_t buttonTaskHandle = NULL;
+
+SemaphoreHandle_t spi0_mutex;
 
 SPIClassRP2040 SPI0(spi0, SPI0_MISO_PIN, SPI0_CS_PIN, SPI0_SCK_PIN, SPI0_MOSI_PIN);
 
@@ -44,3 +48,78 @@ uint32_t last_press_time[BUTTON_COUNT] = {0};
 
 volatile uint32_t stat1_transitions = 0;
 volatile uint32_t stat2_transitions = 0;
+
+void stat_gpio_callback(uint gpio, uint32_t events)
+{
+    if (gpio == BAT_STAT1_PIN)
+        stat1_transitions++;
+    if (gpio == BAT_STAT2_PIN)
+        stat2_transitions++;
+}
+
+void btn_gpio_callback(uint gpio, uint32_t events)
+{
+    Message_t msg;
+    uint32_t now = to_ms_since_boot(get_absolute_time());
+    int idx = -1;
+    for (int i = 0; i < BUTTON_COUNT; ++i)
+    {
+        if (gpio == button_pins[i])
+        {
+            idx = i;
+            break;
+        }
+    }
+    if (idx == -1)
+        return;
+
+    if (now - last_press_time[idx] < BTN_DEBOUNCE_MS)
+    {
+        return;
+    }
+    last_press_time[idx] = now;
+
+    switch (gpio)
+    {
+    case BTN_DPAD_UP_PIN:
+        snprintf(msg.body, 128, "Button UP Pressed\r\n");
+        msg.level = LOG_DEBUG;
+        xQueueSend(usbQueue, (void *)&msg, 0);
+        break;
+    case BTN_DPAD_DOWN_PIN:
+        snprintf(msg.body, 128, "Button DOWN Pressed\r\n");
+        msg.level = LOG_DEBUG;
+        xQueueSend(usbQueue, (void *)&msg, 0);
+        break;
+    case BTN_DPAD_LEFT_PIN:
+        snprintf(msg.body, 128, "Button LEFT Pressed\r\n");
+        msg.level = LOG_DEBUG;
+        xQueueSend(usbQueue, (void *)&msg, 0);
+        break;
+    case BTN_DPAD_RIGHT_PIN:
+        snprintf(msg.body, 128, "Button RIGHT Pressed\r\n");
+        msg.level = LOG_DEBUG;
+        xQueueSend(usbQueue, (void *)&msg, 0);
+        break;
+    case BTN_DPAD_CENTER_PIN:
+        snprintf(msg.body, 128, "Button CENTER Pressed\r\n");
+        msg.level = LOG_DEBUG;
+        xQueueSend(usbQueue, (void *)&msg, 0);
+        break;
+    case BTN_A_PIN:
+        snprintf(msg.body, 128, "Button A Pressed\r\n");
+        msg.level = LOG_DEBUG;
+        xQueueSend(usbQueue, (void *)&msg, 0);
+        break;
+    case BTN_B_PIN:
+        snprintf(msg.body, 128, "Button B Pressed\r\n");
+        msg.level = LOG_DEBUG;
+        xQueueSend(usbQueue, (void *)&msg, 0);
+        break;
+    default:
+        sniprintf(msg.body, 128, "Unknown Button %d Pressed\r\n", gpio);
+        msg.level = LOG_WARN;
+        xQueueSend(usbQueue, (void *)&msg, 0);
+        break;
+    }
+}
