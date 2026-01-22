@@ -132,14 +132,16 @@ void bms_task(void *pvParameters)
     {
         // take a sample average to reduce noise
         const int samples = 5;
-        uint32_t total = 0;
+        float total = 0.0f;
         for (int i = 0; i < samples; ++i)
         {
             adc_select_input(0);
-            total += (adc_read() * 2);
+            uint16_t adc_raw = adc_read();
+            float vbat = 2.0f * ((float)adc_raw / 4095.0f) * 3.3f * 0.969f;
+            total += vbat;
             sleep_us(10);
         }
-        float voltage = (float)total / samples * 3.2f / (1 << 12);
+        float voltage = (float)total / (float)samples;
         return voltage;
     };
 
@@ -147,8 +149,8 @@ void bms_task(void *pvParameters)
     {
         bool STAT1 = gpio_get(BAT_STAT1_PIN);
         bool STAT2 = gpio_get(BAT_STAT2_PIN);
-        bool STAT1_flashing = stat1_transitions > 0;
-        bool STAT2_flashing = stat2_transitions > 0;
+        bool STAT1_flashing = stat1_transitions > 1;
+        bool STAT2_flashing = stat2_transitions > 1;
         stat1_transitions = 0;
         stat2_transitions = 0;
         const char *result;
@@ -175,15 +177,6 @@ void bms_task(void *pvParameters)
         if (result == nullptr)
             result = "UNKNOWN";
 
-        if (result == "FAULT_CONDITION" || result == "EMPTY" || result == "CHARGING_COMPLETE")
-        {
-            gpio_put(BAT_CHARGE_EN_PIN, 0);
-            vTaskDelete(NULL);
-        }
-        else
-        {
-            gpio_put(BAT_CHARGE_EN_PIN, 1);
-        }
         return result;
     };
 
@@ -193,15 +186,15 @@ void bms_task(void *pvParameters)
     const char *status = read_status();
 
     voltage = measure_battery_voltage();
-    snprintf(msg.body, 128, "%s Battery Voltage: %.2fV\r\n", status, voltage);
-    msg.level = LOG_INFO;
+    snprintf(msg.body, 128, "%s %.2fV\r\n", status, voltage);
+    msg.level = LOG_DEBUG;
     xQueueSend(usbQueue, (void *)&msg, 0);
     while (1)
     {
         status = read_status();
         voltage = measure_battery_voltage();
-        snprintf(msg.body, 128, "%s Battery Voltage: %.2fV\r\n", status, voltage);
-        msg.level = LOG_INFO;
+        snprintf(msg.body, 128, "%s %.2fV\r\n", status, voltage);
+        msg.level = LOG_DEBUG;
         xQueueSend(usbQueue, (void *)&msg, 0);
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
@@ -248,7 +241,7 @@ void display_task(void *pvParameters)
 #ifdef EPD_2IN13
     unsigned char image[1050];
     static Epd2in13 epd(&SPI0);
-
+    Paint paint(image, epd.bufwidth * 8, epd.bufheight); // width should be the multiple of 8
 #elif defined(EPD_2IN66)
     UBYTE image[500];
     Paint paint(image, 48, 80); // width should be the multiple of 8
@@ -288,7 +281,6 @@ void display_task(void *pvParameters)
             xQueueSend(usbQueue, (void *)&msg, 0);
             return;
         }
-        Paint paint(image, epd.bufwidth * 8, epd.bufheight); // width should be the multiple of 8
 
         paint.Clear(UNCOLORED);
         paint.DrawStringAt(8, 2, "e-Paper Demo", &Font12, COLORED);
@@ -357,7 +349,7 @@ void display_task(void *pvParameters)
             xQueueSend(usbQueue, (void *)&msg, 0);
             return;
         }
-        snprintf(msg.body, 128, "e-Paper clear and sleep\r\n");
+        snprintf(msg.body, 128, "e-Paper clear\r\n");
         msg.level = LOG_INFO;
         xQueueSend(usbQueue, (void *)&msg, 0);
         epd.Clear();
@@ -443,7 +435,7 @@ void display_task(void *pvParameters)
 #error "No e-Paper display selected"
 #endif
 
-        vTaskDelay(pdMS_TO_TICKS(3000));
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
@@ -458,106 +450,13 @@ void buzzer_task(void *pvParameters)
     gpio_put(BUZZER_PIN, 0);
 
     const int doom_melody[] = {
-        NOTE_E2,
-        NOTE_E2,
-        NOTE_E4,
-        NOTE_E2,
-        NOTE_E2,
-        NOTE_D4,
-        NOTE_E2,
-        NOTE_E2,
-        NOTE_C4,
-        NOTE_E2,
-        NOTE_E2,
-        NOTE_AS4,
-        NOTE_E2,
-        NOTE_E2,
-        NOTE_B4,
-        NOTE_C4,
-        NOTE_E2,
-        NOTE_E2,
-        NOTE_E4,
-        NOTE_E2,
-        NOTE_E2,
-        NOTE_D4,
-        NOTE_E2,
-        NOTE_E2,
-        NOTE_C4,
-        NOTE_E2,
-        NOTE_E2,
-        NOTE_AS4,
-        NOTE_AS4,
-        NOTE_AS4,
-        NOTE_AS4,
-        NOTE_REST,
+        NOTE_E2, NOTE_E2, NOTE_E4, NOTE_E2, NOTE_E2, NOTE_D4, NOTE_E2, NOTE_E2, NOTE_C4, NOTE_E2, NOTE_E2, NOTE_AS4, NOTE_E2, NOTE_E2, NOTE_B4, NOTE_C4,
+        NOTE_E2, NOTE_E2, NOTE_E4, NOTE_E2, NOTE_E2, NOTE_D4, NOTE_E2, NOTE_E2, NOTE_C4, NOTE_E2, NOTE_E2, NOTE_AS4, NOTE_AS4, NOTE_AS4, NOTE_AS4, NOTE_REST,
+        NOTE_E2, NOTE_E2, NOTE_E4, NOTE_E2, NOTE_E2, NOTE_D4, NOTE_E2, NOTE_E2, NOTE_C4, NOTE_E2, NOTE_E2, NOTE_AS4, NOTE_E2, NOTE_E2, NOTE_B4, NOTE_C4,
+        NOTE_E2, NOTE_E2, NOTE_E4, NOTE_E2, NOTE_E2, NOTE_D4, NOTE_E2, NOTE_E2, NOTE_C4, NOTE_E2, NOTE_E2, NOTE_AS4, NOTE_AS4, NOTE_AS4, NOTE_AS4, NOTE_REST,
+        NOTE_A3, NOTE_A3, NOTE_A5, NOTE_A3, NOTE_A3, NOTE_G4, NOTE_A3, NOTE_A3, NOTE_F4, NOTE_A3, NOTE_A3, NOTE_DS4, NOTE_A3, NOTE_A3, NOTE_E4, NOTE_F4,
+        NOTE_A3, NOTE_A3, NOTE_A5, NOTE_A3, NOTE_A3, NOTE_G4, NOTE_A3, NOTE_A3, NOTE_F4, NOTE_A3, NOTE_A3, NOTE_DS4, NOTE_DS4, NOTE_DS4, NOTE_DS4, NOTE_REST};
 
-        NOTE_E2,
-        NOTE_E2,
-        NOTE_E4,
-        NOTE_E2,
-        NOTE_E2,
-        NOTE_D4,
-        NOTE_E2,
-        NOTE_E2,
-        NOTE_C4,
-        NOTE_E2,
-        NOTE_E2,
-        NOTE_AS4,
-        NOTE_E2,
-        NOTE_E2,
-        NOTE_B4,
-        NOTE_C4,
-        NOTE_E2,
-        NOTE_E2,
-        NOTE_E4,
-        NOTE_E2,
-        NOTE_E2,
-        NOTE_D4,
-        NOTE_E2,
-        NOTE_E2,
-        NOTE_C4,
-        NOTE_E2,
-        NOTE_E2,
-        NOTE_AS4,
-        NOTE_AS4,
-        NOTE_AS4,
-        NOTE_AS4,
-        NOTE_REST,
-
-        NOTE_A3,
-        NOTE_A3,
-        NOTE_A5,
-        NOTE_A3,
-        NOTE_A3,
-        NOTE_G4,
-        NOTE_A3,
-        NOTE_A3,
-        NOTE_F4,
-        NOTE_A3,
-        NOTE_A3,
-        NOTE_DS4,
-        NOTE_A3,
-        NOTE_A3,
-        NOTE_E4,
-        NOTE_F4,
-        NOTE_A3,
-        NOTE_A3,
-        NOTE_A5,
-        NOTE_A3,
-        NOTE_A3,
-        NOTE_G4,
-        NOTE_A3,
-        NOTE_A3,
-        NOTE_F4,
-        NOTE_A3,
-        NOTE_A3,
-        NOTE_DS4,
-        NOTE_DS4,
-        NOTE_DS4,
-        NOTE_DS4,
-        NOTE_REST,
-
-    };
     const int note_count = sizeof(doom_melody) / sizeof(doom_melody[0]);
     const int note_duration_ms = 150; // 200 BPM 1/8 notes
 
