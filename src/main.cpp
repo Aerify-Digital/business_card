@@ -49,16 +49,27 @@ void bms_task(void *pvParameters)
 
     auto measure_battery_voltage = []()
     {
+        Message_t msg;
         // take a sample average to reduce noise
         const int samples = 5;
         float total = 0.0f;
-        for (int i = 0; i < samples; ++i)
+        if (xSemaphoreTake(adc_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
         {
-            adc_select_input(0);
-            uint16_t adc_raw = adc_read();
-            float vbat = 2.0f * ((float)adc_raw / 4095.0f) * 3.3f * 0.969f;
-            total += vbat;
-            sleep_us(10);
+            for (int i = 0; i < samples; ++i)
+            {
+                adc_select_input(0);
+                uint16_t adc_raw = adc_read();
+                float vbat = 2.0f * ((float)adc_raw / 4095.0f) * 3.3f * 0.969f;
+                total += vbat;
+                sleep_us(10);
+            }
+            xSemaphoreGive(adc_mutex);
+        }
+        else
+        {
+            snprintf(msg.body, 128, "Failed to obtain ADC mutex for battery voltage measurement!\r\n");
+            msg.level = LOG_ERROR;
+            xQueueSend(usbQueue, (void *)&msg, 0);
         }
         float voltage = (float)total / (float)samples;
         return voltage;
@@ -255,26 +266,27 @@ void display_task(void *pvParameters)
     xQueueSend(usbQueue, (void *)&msg, 0);
 
 #ifdef EPD_2IN13
-    unsigned char image[1050];
-    static Epd2in13 epd(&SPI0);
+
 #elif defined(EPD_2IN66)
-    UBYTE image[500];
-    static Epd2in66 epd(&SPI0);
+
 #else
+#ifndef I2C_SCAN
 #error "No e-Paper display selected"
 #endif
+#endif
 
-    Paint paint(image, EPD_WIDTH * 8, EPD_HEIGHT);
     while (1)
     {
-        if (xSemaphoreTake(spi0_mutex, portMAX_DELAY) == pdTRUE)
+        if (xSemaphoreTake(spi0_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
         {
 #ifdef EPD_2IN13
 
 #elif defined(EPD_2IN66)
 
 #else
+#ifndef I2C_SCAN
 #error "No e-Paper display selected"
+#endif
 #endif
             xSemaphoreGive(spi0_mutex);
         }
@@ -324,27 +336,162 @@ void buzzer_task(void *pvParameters)
     }
 }
 
+void i2c_scan_task(void *pvParameters)
+{
+
+    Message_t msg;
+    bool led = false;
+    bool scan = false;
+
+    int count = 0;
+    msg.level = LOG_DEBUG;
+    snprintf(msg.body, 128, "I2C Scan Started\n");
+    xQueueSend(usbQueue, (void *)&msg, 10);
+    while (1)
+    {
+        if (count == 10 && !scan)
+        {
+            msg.level = LOG_INFO;
+            snprintf(msg.body, 128, "\nI2C Bus 0 Scan\n");
+            xQueueSend(usbQueue, (void *)&msg, 10);
+            snprintf(msg.body, 128, "   0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\n");
+            xQueueSend(usbQueue, (void *)&msg, 10);
+            for (int addr = 0; addr < (1 << 7); ++addr)
+            {
+                if (addr % 16 == 0)
+                {
+                    snprintf(msg.body, 128, "%02x ", addr);
+                    xQueueSend(usbQueue, (void *)&msg, 10);
+                }
+
+                // Perform a 1-byte dummy read from the probe address. If a slave
+                // acknowledges this address, the function returns the number of bytes
+                // transferred. If the address byte is ignored, the function returns
+                // -1.
+
+                // Skip over any reserved addresses.
+                int ret;
+                uint8_t rxdata;
+                if (reserved_addr(addr))
+                    ret = PICO_ERROR_GENERIC;
+                else
+                    ret = i2c_read_blocking(i2c_default, addr, &rxdata, 1, false);
+
+                snprintf(msg.body, 128, ret < 0 ? "." : "@");
+                xQueueSend(usbQueue, (void *)&msg, 10);
+                snprintf(msg.body, 128, addr % 16 == 15 ? "\n" : "  ");
+                xQueueSend(usbQueue, (void *)&msg, 10);
+            }
+            snprintf(msg.body, 128, "Done.\n");
+            xQueueSend(usbQueue, (void *)&msg, 10);
+            snprintf(msg.body, 128, "\nI2C Bus 1 Scan\n");
+            xQueueSend(usbQueue, (void *)&msg, 10);
+            snprintf(msg.body, 128, "   0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\n");
+            xQueueSend(usbQueue, (void *)&msg, 10);
+            for (int addr = 0; addr < (1 << 7); ++addr)
+            {
+                if (addr % 16 == 0)
+                {
+                    snprintf(msg.body, 128, "%02x ", addr);
+                    xQueueSend(usbQueue, (void *)&msg, 10);
+                }
+
+                // Perform a 1-byte dummy read from the probe address. If a slave
+                // acknowledges this address, the function returns the number of bytes
+                // transferred. If the address byte is ignored, the function returns
+                // -1.
+
+                // Skip over any reserved addresses.
+                int ret;
+                uint8_t rxdata;
+                if (reserved_addr(addr))
+                    ret = PICO_ERROR_GENERIC;
+                else
+                    ret = i2c_read_blocking(i2c1, addr, &rxdata, 1, false);
+
+                snprintf(msg.body, 128, ret < 0 ? "." : "@");
+                xQueueSend(usbQueue, (void *)&msg, 10);
+                snprintf(msg.body, 128, addr % 16 == 15 ? "\n" : "  ");
+                xQueueSend(usbQueue, (void *)&msg, 10);
+            }
+            snprintf(msg.body, 128, "Done.\n");
+            xQueueSend(usbQueue, (void *)&msg, 10);
+            scan = true;
+            vTaskDelete(i2cScanTaskHandle);
+        }
+
+        if (count < 10)
+            count++;
+
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
 void setup()
 {
     Serial.begin(115200);
     sleep_ms(3000);
     Serial.println("Aerify Digital Business Card Starting...");
+
     usbQueue = xQueueCreate(MSG_QUEUE_LEN, sizeof(Message_t));
     displayQueue = xQueueCreate(MSG_QUEUE_LEN, sizeof(Message_t));      // TODO: add a display command struct
     buzzerQueue = xQueueCreate(MSG_QUEUE_LEN, sizeof(BuzzerCommand_t)); // TODO: update buzzer command to take melodies etc.
+
     pinMode(SPI0_CS_PIN, OUTPUT);
     pinMode(EPD_RST_PIN, OUTPUT);
     pinMode(EPD_DC_PIN, OUTPUT);
     pinMode(EPD_BUSY_PIN, INPUT);
+
     SPI0.begin();
     SPI0.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
+
     spi0_mutex = xSemaphoreCreateMutex();
+    i2c_default_mutex = xSemaphoreCreateMutex();
+    adc_mutex = xSemaphoreCreateMutex();
+
     xTaskCreate(usb_task, "USB Task", 1024, NULL, 1, &usbTaskHandle);
+#ifdef I2C_SCAN
+    xTaskCreate(i2c_scan_task, "I2C Scan Task", 1024, NULL, 1, &i2cScanTaskHandle);
+    I2C0.begin();
+    I2C1.begin();
+#else
+    I2C0.begin(0x21); // Initialize I2C0 as slave with address 0x21
+    I2C1.begin();
     xTaskCreate(bms_task, "BMS Task", 1024, NULL, 1, &bmsTaskHandle);
     xTaskCreate(sd_task, "SD Task", 4096, NULL, 1, &sdTaskHandle);
     xTaskCreate(display_task, "Display Task", 4096, NULL, 1, &displayTaskHandle);
     xTaskCreate(buzzer_task, "Buzzer Task", 1024, NULL, 1, &buzzerTaskHandle);
     xTaskCreate(button_task, "Button Task", 512, NULL, 1, &buttonTaskHandle);
+    // test atecc508a
+    /*
+    if (init_atecc508a(I2C1) == false)
+    {
+        DEBUG_PRINTLN("ATECC508A not detected!");
+    }
+    else
+    {
+        DEBUG_PRINTLN("ATECC508A detected.");
+        uint8_t serial_number[SERIAL_NUMBER_SIZE];
+        if (read_atecc508a_serial_number(serial_number))
+        {
+            DEBUG_PRINT("ATECC508A Serial Number: ");
+            for (int i = 0; i < SERIAL_NUMBER_SIZE; ++i)
+            {
+                if (serial_number[i] < 0x10)
+                    DEBUG_PRINT("0");
+                DEBUG_PRINT(serial_number[i], HEX);
+                if (i < SERIAL_NUMBER_SIZE - 1)
+                    DEBUG_PRINT(":");
+            }
+            DEBUG_PRINTLN();
+        }
+        else
+        {
+            DEBUG_PRINTLN("Failed to read ATECC508A serial number!");
+        }
+    }
+    */
+#endif
 }
 
 void loop()

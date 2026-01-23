@@ -8,7 +8,9 @@
 #include "epd2in66/epd2in66.h"
 #include "epd2in66/imagedata.h"
 #else
+#ifndef I2C_SCAN
 #error "No e-Paper display selected"
+#endif
 #endif
 #define COLORED 0
 #define UNCOLORED 1

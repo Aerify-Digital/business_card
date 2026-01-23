@@ -105,7 +105,7 @@ void listSDFiles(SPIClassRP2040 &spi, QueueHandle_t usbQueue, SemaphoreHandle_t 
             return;
         }
         snprintf(msg.body, 128, "Listing files on SD Card:\r\n");
-        msg.level = LOG_INFO;
+        msg.level = LOG_DEBUG;
         xQueueSend(usbQueue, (void *)&msg, 0);
         File file = root.openNextFile();
         while (file)

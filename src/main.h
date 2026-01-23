@@ -21,6 +21,7 @@
 #include "message.h"
 #include "ePaperDisplay/epd.h"
 #include "ePaperDisplay/epdpaint.h"
+#include "atecc508a.h"
 
 static QueueHandle_t usbQueue = NULL;
 static QueueHandle_t displayQueue = NULL;
@@ -32,10 +33,16 @@ static TaskHandle_t sdTaskHandle = NULL;
 static TaskHandle_t displayTaskHandle = NULL;
 static TaskHandle_t buzzerTaskHandle = NULL;
 static TaskHandle_t buttonTaskHandle = NULL;
+static TaskHandle_t i2cScanTaskHandle = NULL;
 
 SemaphoreHandle_t spi0_mutex;
+SemaphoreHandle_t i2c_default_mutex;
+SemaphoreHandle_t adc_mutex;
 
 SPIClassRP2040 SPI0(spi0, SPI0_MISO_PIN, SPI0_CS_PIN, SPI0_SCK_PIN, SPI0_MOSI_PIN);
+
+TwoWire I2C0(i2c_default, I2C0_SDA_PIN, I2C0_SCL_PIN);
+TwoWire I2C1(i2c1, I2C1_SDA_PIN, I2C1_SCL_PIN);
 
 volatile uint32_t stat1_transitions = 0;
 volatile uint32_t stat2_transitions = 0;
@@ -124,4 +131,10 @@ void btn_gpio_callback(uint gpio, uint32_t events)
         xQueueSendFromISR(usbQueue, (void *)&msg, 0);
         break;
     }
+}
+
+// These are any addresses of the form 000 0xxx or 111 1xxx
+bool reserved_addr(uint8_t addr)
+{
+    return (addr & 0x78) == 0 || (addr & 0x78) == 0x78;
 }
