@@ -18,16 +18,9 @@
 #include "buzzer.h"
 #include "buttons.h"
 #include "sd_card.h"
+#include "message.h"
 #include "ePaperDisplay/epd.h"
 #include "ePaperDisplay/epdpaint.h"
-
-typedef struct
-{
-    char body[128];
-    LogLevel_t level = LOG_NONE;
-} Message_t;
-
-static const int MSG_QUEUE_LEN = 16;
 
 static QueueHandle_t usbQueue = NULL;
 static QueueHandle_t displayQueue = NULL;
