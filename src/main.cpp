@@ -2,18 +2,12 @@
 
 void button_task(void *pvParameters)
 {
-    // Configure button GPIOs with pull-ups and interrupts
-    const uint button_pins[] = {
-        BTN_DPAD_UP_PIN,
-        BTN_DPAD_DOWN_PIN,
-        BTN_DPAD_LEFT_PIN,
-        BTN_DPAD_RIGHT_PIN,
-        BTN_DPAD_CENTER_PIN,
-        BTN_A_PIN,
-        BTN_B_PIN};
-    const size_t button_count = sizeof(button_pins) / sizeof(button_pins[0]);
+    Message_t msg;
+    snprintf(msg.body, 128, "Button Task Started\r\n");
+    msg.level = LOG_DEBUG;
+    xQueueSend(usbQueue, (void *)&msg, 0);
 
-    for (size_t i = 0; i < button_count; ++i)
+    for (size_t i = 0; i < BUTTON_COUNT; ++i)
     {
         uint pin = button_pins[i];
         gpio_init(pin);
@@ -184,7 +178,7 @@ void sd_task(void *pvParameters)
     else
     {
         snprintf(msg.body, 128, "SD Card initialized.\r\n");
-        msg.level = LOG_INFO;
+        msg.level = LOG_DEBUG;
         xQueueSend(usbQueue, (void *)&msg, 0);
     }
 
@@ -210,7 +204,7 @@ void sd_task(void *pvParameters)
             if (initialized)
             {
                 snprintf(msg.body, 128, "SD Card re-initialized successfully.\r\n");
-                msg.level = LOG_INFO;
+                msg.level = LOG_DEBUG;
                 xQueueSend(usbQueue, (void *)&msg, 0);
             }
             else

@@ -44,17 +44,26 @@ SemaphoreHandle_t spi0_mutex;
 
 SPIClassRP2040 SPI0(spi0, SPI0_MISO_PIN, SPI0_CS_PIN, SPI0_SCK_PIN, SPI0_MOSI_PIN);
 
-uint32_t last_press_time[BUTTON_COUNT] = {0};
-
 volatile uint32_t stat1_transitions = 0;
 volatile uint32_t stat2_transitions = 0;
 
 void stat_gpio_callback(uint gpio, uint32_t events)
 {
+    Message_t msg;
     if (gpio == BAT_STAT1_PIN)
+    {
+        snprintf(msg.body, 128, "STAT1 Interrupt\r\n");
+        msg.level = LOG_DEBUG;
+        xQueueSendFromISR(usbQueue, (void *)&msg, 0);
         stat1_transitions++;
+    }
     if (gpio == BAT_STAT2_PIN)
+    {
+        snprintf(msg.body, 128, "STAT2 Interrupt\r\n");
+        msg.level = LOG_DEBUG;
+        xQueueSendFromISR(usbQueue, (void *)&msg, 0);
         stat2_transitions++;
+    }
 }
 
 void btn_gpio_callback(uint gpio, uint32_t events)
@@ -84,42 +93,42 @@ void btn_gpio_callback(uint gpio, uint32_t events)
     case BTN_DPAD_UP_PIN:
         snprintf(msg.body, 128, "Button UP Pressed\r\n");
         msg.level = LOG_DEBUG;
-        xQueueSend(usbQueue, (void *)&msg, 0);
+        xQueueSendFromISR(usbQueue, (void *)&msg, 0);
         break;
     case BTN_DPAD_DOWN_PIN:
         snprintf(msg.body, 128, "Button DOWN Pressed\r\n");
         msg.level = LOG_DEBUG;
-        xQueueSend(usbQueue, (void *)&msg, 0);
+        xQueueSendFromISR(usbQueue, (void *)&msg, 0);
         break;
     case BTN_DPAD_LEFT_PIN:
         snprintf(msg.body, 128, "Button LEFT Pressed\r\n");
         msg.level = LOG_DEBUG;
-        xQueueSend(usbQueue, (void *)&msg, 0);
+        xQueueSendFromISR(usbQueue, (void *)&msg, 0);
         break;
     case BTN_DPAD_RIGHT_PIN:
         snprintf(msg.body, 128, "Button RIGHT Pressed\r\n");
         msg.level = LOG_DEBUG;
-        xQueueSend(usbQueue, (void *)&msg, 0);
+        xQueueSendFromISR(usbQueue, (void *)&msg, 0);
         break;
     case BTN_DPAD_CENTER_PIN:
         snprintf(msg.body, 128, "Button CENTER Pressed\r\n");
         msg.level = LOG_DEBUG;
-        xQueueSend(usbQueue, (void *)&msg, 0);
+        xQueueSendFromISR(usbQueue, (void *)&msg, 0);
         break;
     case BTN_A_PIN:
         snprintf(msg.body, 128, "Button A Pressed\r\n");
         msg.level = LOG_DEBUG;
-        xQueueSend(usbQueue, (void *)&msg, 0);
+        xQueueSendFromISR(usbQueue, (void *)&msg, 0);
         break;
     case BTN_B_PIN:
         snprintf(msg.body, 128, "Button B Pressed\r\n");
         msg.level = LOG_DEBUG;
-        xQueueSend(usbQueue, (void *)&msg, 0);
+        xQueueSendFromISR(usbQueue, (void *)&msg, 0);
         break;
     default:
-        sniprintf(msg.body, 128, "Unknown Button %d Pressed\r\n", gpio);
+        snprintf(msg.body, 128, "Unknown Button %d Pressed\r\n", gpio);
         msg.level = LOG_WARN;
-        xQueueSend(usbQueue, (void *)&msg, 0);
+        xQueueSendFromISR(usbQueue, (void *)&msg, 0);
         break;
     }
 }
