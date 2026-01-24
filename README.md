@@ -1,6 +1,8 @@
 # AerID Business Card
 
-# AerID v0
+## Versions
+
+### AerID v0
 
 <p>
 <img src="./img/aerid_v0_front.jpg" alt="front v0" width="320"/>
