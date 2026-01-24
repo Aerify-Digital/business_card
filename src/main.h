@@ -36,6 +36,8 @@ static TaskHandle_t displayTaskHandle = NULL;
 static TaskHandle_t buzzerTaskHandle = NULL;
 static TaskHandle_t buttonTaskHandle = NULL;
 static TaskHandle_t i2cScanTaskHandle = NULL;
+static TaskHandle_t ateccTaskHandle = NULL;
+static TaskHandle_t atshaTaskHandle = NULL;
 
 SemaphoreHandle_t spi0_mutex;
 SemaphoreHandle_t i2c_default_mutex;

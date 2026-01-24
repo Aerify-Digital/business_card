@@ -1,5 +1,59 @@
 #include "main.h"
 
+void atecc_task(void *pvParameters)
+{
+    Message_t msg;
+    snprintf(msg.body, 128, "ATECC508A Task Started\r\n");
+    msg.level = LOG_DEBUG;
+    xQueueSend(usbQueue, (void *)&msg, 0);
+    if (init_atecc508a(I2C1) == false)
+    {
+        snprintf(msg.body, 128, "ATECC508A not detected!\r\n");
+        msg.level = LOG_ERROR;
+        xQueueSend(usbQueue, (void *)&msg, 0);
+    }
+    else
+    {
+        uint8_t serial_number[SERIAL_NUMBER_SIZE];
+        if (read_atecc508a_serial_number(serial_number))
+        {
+            // convert serial number to hex string
+            char serial_str[SERIAL_NUMBER_SIZE * 2 + 1];
+            for (size_t i = 0; i < SERIAL_NUMBER_SIZE; ++i)
+            {
+                snprintf(&serial_str[i * 2], 3, "%02X", serial_number[i]);
+            }
+            snprintf(msg.body, 128, "ATECC508A Serial Number: %s\r\n", serial_str);
+            msg.level = LOG_DEBUG;
+            xQueueSend(usbQueue, (void *)&msg, 0);
+        }
+        else
+        {
+            snprintf(msg.body, 128, "Failed to read ATECC508A serial number!\r\n");
+            msg.level = LOG_ERROR;
+            xQueueSend(usbQueue, (void *)&msg, 0);
+        }
+    }
+
+    while (1)
+    {
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
+void atsha_task(void *pvParameters)
+{
+    Message_t msg;
+    snprintf(msg.body, 128, "ATSHA204A Task Started\r\n");
+    msg.level = LOG_DEBUG;
+    xQueueSend(usbQueue, (void *)&msg, 0);
+
+    while (1)
+    {
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
 void button_task(void *pvParameters)
 {
     Message_t msg;
@@ -511,35 +565,8 @@ void setup()
     xTaskCreate(display_task, "Display Task", 4096, NULL, 1, &displayTaskHandle);
     xTaskCreate(buzzer_task, "Buzzer Task", 1024, NULL, 1, &buzzerTaskHandle);
     xTaskCreate(button_task, "Button Task", 512, NULL, 1, &buttonTaskHandle);
-    // test atecc508a
-    /*
-    if (init_atecc508a(I2C1) == false)
-    {
-        DEBUG_PRINTLN("ATECC508A not detected!");
-    }
-    else
-    {
-        DEBUG_PRINTLN("ATECC508A detected.");
-        uint8_t serial_number[SERIAL_NUMBER_SIZE];
-        if (read_atecc508a_serial_number(serial_number))
-        {
-            DEBUG_PRINT("ATECC508A Serial Number: ");
-            for (int i = 0; i < SERIAL_NUMBER_SIZE; ++i)
-            {
-                if (serial_number[i] < 0x10)
-                    DEBUG_PRINT("0");
-                DEBUG_PRINT(serial_number[i], HEX);
-                if (i < SERIAL_NUMBER_SIZE - 1)
-                    DEBUG_PRINT(":");
-            }
-            DEBUG_PRINTLN();
-        }
-        else
-        {
-            DEBUG_PRINTLN("Failed to read ATECC508A serial number!");
-        }
-    }
-    */
+    xTaskCreate(atecc_task, "ATECC Task", 1024, NULL, 1, &ateccTaskHandle);
+    xTaskCreate(atsha_task, "ATSHA Task", 1024, NULL, 1, &atshaTaskHandle);
 #endif
 }
 
