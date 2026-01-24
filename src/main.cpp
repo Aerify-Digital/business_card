@@ -53,7 +53,7 @@ void bms_task(void *pvParameters)
         // take a sample average to reduce noise
         const int samples = 5;
         float total = 0.0f;
-        if (xSemaphoreTake(adc_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
+        if (xSemaphoreTake(adc_mutex, portMAX_DELAY) == pdTRUE)
         {
             for (int i = 0; i < samples; ++i)
             {
@@ -169,7 +169,7 @@ void sd_task(void *pvParameters)
     xQueueSend(usbQueue, (void *)&msg, 0);
 
     bool initialized = false;
-    if (xSemaphoreTake(spi0_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
+    if (xSemaphoreTake(spi0_mutex, portMAX_DELAY) == pdTRUE)
     {
 
         initialized = beginSD(SPI0);
@@ -186,6 +186,7 @@ void sd_task(void *pvParameters)
         snprintf(msg.body, 128, "SD Card initialization failed!\r\n");
         msg.level = LOG_ERROR;
         xQueueSend(usbQueue, (void *)&msg, 0);
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
     else
     {
@@ -193,7 +194,7 @@ void sd_task(void *pvParameters)
         msg.level = LOG_DEBUG;
         xQueueSend(usbQueue, (void *)&msg, 0);
         // List files on root
-        listSDFiles(SPI0, usbQueue, spi0_mutex);
+        // listSDFiles(SPI0, usbQueue, spi0_mutex);
     }
 
     while (1)
@@ -203,7 +204,7 @@ void sd_task(void *pvParameters)
             snprintf(msg.body, 128, "Attempting SD Card re-initialization...\r\n");
             msg.level = LOG_INFO;
             xQueueSend(usbQueue, (void *)&msg, 0);
-            if (xSemaphoreTake(spi0_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
+            if (xSemaphoreTake(spi0_mutex, portMAX_DELAY) == pdTRUE)
             {
                 initialized = beginSD(SPI0);
                 xSemaphoreGive(spi0_mutex);
@@ -221,18 +222,19 @@ void sd_task(void *pvParameters)
                 msg.level = LOG_DEBUG;
                 xQueueSend(usbQueue, (void *)&msg, 0);
                 // List files on root
-                listSDFiles(SPI0, usbQueue, spi0_mutex);
+                // listSDFiles(SPI0, usbQueue, spi0_mutex);
             }
             else
             {
                 snprintf(msg.body, 128, "SD Card re-initialization failed!\r\n");
                 msg.level = LOG_ERROR;
                 xQueueSend(usbQueue, (void *)&msg, 0);
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                continue;
             }
-            vTaskDelay(pdMS_TO_TICKS(1000));
         }
 
-        if (xSemaphoreTake(spi0_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
+        if (xSemaphoreTake(spi0_mutex, portMAX_DELAY) == pdTRUE)
         {
 
             bool present = cardPresent(SPI0);
@@ -244,17 +246,18 @@ void sd_task(void *pvParameters)
                 xQueueSend(usbQueue, (void *)&msg, 0);
             }
             xSemaphoreGive(spi0_mutex);
+            vTaskDelay(pdMS_TO_TICKS(1000));
         }
         else
         {
             snprintf(msg.body, 128, "Failed to obtain SPI mutex for SD Card re-initialization!\r\n");
             msg.level = LOG_ERROR;
             xQueueSend(usbQueue, (void *)&msg, 0);
-            continue;
+            vTaskDelay(pdMS_TO_TICKS(1000));
         }
 
         // TODO: Add queue and file operations here
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
@@ -264,6 +267,55 @@ void display_task(void *pvParameters)
     snprintf(msg.body, 128, "Display Task Started\r\n");
     msg.level = LOG_DEBUG;
     xQueueSend(usbQueue, (void *)&msg, 0);
+
+    // TODO: Initialize LVGL and e-Paper display here
+    //  lv_init();
+    //  lv_tick_set_cb(my_tick_cb);
+    //  lv_display_t * display = lv_display_create(TFT_HOR_RES, TFT_VER_RES);
+    /*Add rendering buffers to the screen.
+     *Here adding a smaller partial buffer assuming 1 bit color */
+    // static uint8_t buf[(WIDTH * HEIGHT + 7) / 8]; /* 1 bit color */
+    // lv_display_set_buffers(display, buf, NULL, sizeof(buf), LV_DISPLAY_RENDER_MODE_PARTIAL);
+
+    /*Add a callback that can flush the content from `buf` when it has been rendered*/
+    // lv_display_set_flush_cb(display, my_flush_cb);
+
+    // lv_indev_t * indev = lv_indev_create();
+    // lv_indev_set_type(indev, LV_INDEV_TYPE_KEYPAD);
+    // lv_indev_set_read_cb(indev, my_keypad_read_cb);
+
+    /* bool my_keypad_read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
+    if (button_up_pressed) {
+        data->key = LV_KEY_UP;
+        data->state = LV_INDEV_STATE_PRESSED;
+    } else if (button_down_pressed) {
+        data->key = LV_KEY_DOWN;
+        data->state = LV_INDEV_STATE_PRESSED;
+    } else if (button_left_pressed) {
+        data->key = LV_KEY_LEFT;
+        data->state = LV_INDEV_STATE_PRESSED;
+    } else if (button_right_pressed) {
+        data->key = LV_KEY_RIGHT;
+        data->state = LV_INDEV_STATE_PRESSED;
+    } else if (button_center_pressed) {
+        data->key = LV_KEY_ENTER;
+        data->state = LV_INDEV_STATE_PRESSED;
+    } else if (button_a_pressed) {
+        data->key = LV_KEY_NEXT;
+        data->state = LV_INDEV_STATE_PRESSED;
+    } else if (button_b_pressed) {
+        data->key = LV_KEY_PREV;
+        data->state = LV_INDEV_STATE_PRESSED;
+    } else {
+        data->state = LV_INDEV_STATE_RELEASED;
+    }
+    return false;
+}*/
+
+    /*The drivers are in place; now we can create the UI*/
+    // lv_obj_t * label = lv_label_create(lv_screen_active());
+    // lv_label_set_text(label, "Hello world");
+    // lv_obj_center(label);
 
 #ifdef EPD_2IN13
 
@@ -277,7 +329,8 @@ void display_task(void *pvParameters)
 
     while (1)
     {
-        if (xSemaphoreTake(spi0_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
+        // lv_timer_handler();
+        if (xSemaphoreTake(spi0_mutex, portMAX_DELAY) == pdTRUE)
         {
 #ifdef EPD_2IN13
 
@@ -297,7 +350,7 @@ void display_task(void *pvParameters)
             xQueueSend(usbQueue, (void *)&msg, 0);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(1));
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
 
