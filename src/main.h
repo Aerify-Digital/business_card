@@ -22,6 +22,7 @@
 #include "ePaperDisplay/epd.h"
 #include "ePaperDisplay/epdpaint.h"
 #include "atecc508a.h"
+#include "atsha204a.h"
 #include "lvgl.h"
 
 static QueueHandle_t usbQueue = NULL;

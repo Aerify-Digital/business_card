@@ -2,6 +2,7 @@
 #define MESSAGE_H
 #include <Arduino.h>
 #include "debug.h"
+
 typedef struct
 {
     char body[128];
@@ -9,4 +10,5 @@ typedef struct
 } Message_t;
 
 static const int MSG_QUEUE_LEN = 16;
+
 #endif

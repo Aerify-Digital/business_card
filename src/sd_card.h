@@ -2,10 +2,11 @@
 
 #define SD_CARD_H
 #include <Arduino.h>
-#include <SD.h>
-#include "FS.h"
+#include "SdFat.h"
 #include "pindefs.h"
 #include "message.h"
+
+SdFat SD;
 
 /**
  * @brief Initialize the SD card
@@ -14,19 +15,19 @@ bool beginSD(SPIClassRP2040 &spi)
 {
     pinMode(SD_CARD_CS_PIN, OUTPUT);
     digitalWrite(SD_CARD_CS_PIN, HIGH);
-    return SD.begin(SD_CARD_CS_PIN, spi);
+    return SD.begin(SdSpiConfig(SD_CARD_CS_PIN, SHARED_SPI, SD_SCK_MHZ(50), &spi));
 }
 
 bool endSD()
 {
-    SD.end(false);
+    SD.end();
     return true;
 }
 
 /**
  * @brief Open a file on the SD card
  */
-File openSDFile(const char *filename, int mode = FILE_READ)
+FsFile openSDFile(const char *filename, int mode = FILE_READ)
 {
     return SD.open(filename, mode);
 }
@@ -37,7 +38,7 @@ File openSDFile(const char *filename, int mode = FILE_READ)
 bool cardPresent(SPIClassRP2040 &spi)
 {
     bool present = false;
-    File lock = openSDFile("/.aerlock", FILE_WRITE);
+    FsFile lock = openSDFile("/.aerlock", FILE_WRITE);
     bool sd_removed = false;
     if (!lock)
     {
@@ -49,7 +50,7 @@ bool cardPresent(SPIClassRP2040 &spi)
         lock.seek(0);
         lock.print("lock");
         lock.close();
-        File check = openSDFile("/.aerlock", FILE_READ);
+        FsFile check = openSDFile("/.aerlock", FILE_READ);
         if (!check)
         {
             sd_removed = true;
@@ -81,49 +82,10 @@ bool cardPresent(SPIClassRP2040 &spi)
     return present;
 }
 
-void listSDFiles(SPIClassRP2040 &spi, QueueHandle_t usbQueue, SemaphoreHandle_t spi_mutex)
+bool formatSD(SPIClassRP2040 &spi)
 {
-    Message_t msg;
-    if (xSemaphoreTake(spi_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
-    {
-        File root = SD.open("/");
-        if (!root)
-        {
-            snprintf(msg.body, 128, "Failed to open root directory on SD Card!\r\n");
-            msg.level = LOG_ERROR;
-            xQueueSend(usbQueue, (void *)&msg, 0);
-            xSemaphoreGive(spi_mutex);
-            return;
-        }
-        if (!root.isDirectory())
-        {
-            snprintf(msg.body, 128, "Root path on SD Card is not a directory!\r\n");
-            msg.level = LOG_ERROR;
-            xQueueSend(usbQueue, (void *)&msg, 0);
-            root.close();
-            xSemaphoreGive(spi_mutex);
-            return;
-        }
-        snprintf(msg.body, 128, "Listing files on SD Card:\r\n");
-        msg.level = LOG_DEBUG;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-        File file = root.openNextFile();
-        while (file)
-        {
-            snprintf(msg.body, 128, "Found file: %s\r\n", file.name());
-            msg.level = LOG_DEBUG;
-            xQueueSend(usbQueue, (void *)&msg, 0);
-            file.close();
-            file = root.openNextFile();
-        }
-        xSemaphoreGive(spi_mutex);
-    }
-    else
-    {
-        snprintf(msg.body, 128, "Failed to obtain SPI mutex for SD Card file listing!\r\n");
-        msg.level = LOG_ERROR;
-        xQueueSend(usbQueue, (void *)&msg, 0);
-    }
+    bool result = SD.format();
+    return result;
 }
 
 #endif

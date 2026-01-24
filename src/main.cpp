@@ -193,8 +193,6 @@ void sd_task(void *pvParameters)
         snprintf(msg.body, 128, "SD Card initialized.\r\n");
         msg.level = LOG_DEBUG;
         xQueueSend(usbQueue, (void *)&msg, 0);
-        // List files on root
-        // listSDFiles(SPI0, usbQueue, spi0_mutex);
     }
 
     while (1)
@@ -221,8 +219,6 @@ void sd_task(void *pvParameters)
                 snprintf(msg.body, 128, "SD Card re-initialized successfully.\r\n");
                 msg.level = LOG_DEBUG;
                 xQueueSend(usbQueue, (void *)&msg, 0);
-                // List files on root
-                // listSDFiles(SPI0, usbQueue, spi0_mutex);
             }
             else
             {
