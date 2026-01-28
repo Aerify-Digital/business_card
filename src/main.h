@@ -74,7 +74,7 @@ void stat_gpio_callback(uint gpio, uint32_t events)
 
 void btn_gpio_callback(uint gpio, uint32_t events)
 {
-    Message_t msg;
+
     uint32_t now = to_ms_since_boot(get_absolute_time());
     int idx = -1;
     for (int i = 0; i < BUTTON_COUNT; ++i)
