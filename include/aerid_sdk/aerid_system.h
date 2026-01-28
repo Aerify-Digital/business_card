@@ -8,8 +8,6 @@ extern "C"
 #include <stddef.h>
 #include "pico/time.h"
 #include "pico/unique_id.h"
-#include <FreeRTOS.h>
-#include <task.h>
 
     typedef struct
     {
