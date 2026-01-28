@@ -25,6 +25,7 @@
 #include "atsha204a.h"
 #include "lvgl.h"
 #include "aerid_sdk/aerid_sdk.h"
+#include "aerid_sdk/aerid_sdk_internal.h"
 
 static QueueHandle_t usbQueue = NULL;
 static QueueHandle_t displayQueue = NULL;
@@ -70,8 +71,6 @@ void stat_gpio_callback(uint gpio, uint32_t events)
         stat2_transitions++;
     }
 }
-
-void handle_input_event(aerid_input_t input, aerid_input_event_t event);
 
 void btn_gpio_callback(uint gpio, uint32_t events)
 {
