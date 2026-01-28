@@ -95,7 +95,7 @@ void btn_gpio_callback(uint gpio, uint32_t events)
     last_press_time[idx] = now;
 
     // TODO: check for long press / repeat here
-
+    Message_t msg;
     switch (gpio)
     {
     case BTN_DPAD_UP_PIN:

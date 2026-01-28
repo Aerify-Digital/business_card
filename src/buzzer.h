@@ -15,7 +15,7 @@ typedef struct
 {
     BuzzType_t type;
     uint16_t duration_ms; // Only used for CHIRP
-    // TODO: add fields for frequency, volume, etc.
+    // TODO: add fields for frequency, etc.
 } BuzzerCommand_t;
 
 typedef enum
