@@ -6,8 +6,6 @@ extern "C"
 #endif
 #include <stdint.h>
 #include <stddef.h>
-#include "pico/time.h"
-#include "pico/unique_id.h"
 
     typedef struct
     {

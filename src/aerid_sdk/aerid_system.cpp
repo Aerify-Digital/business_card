@@ -2,6 +2,8 @@
 #include "aerid_launcher.h"
 #include "aerid_version.h"
 #include <Arduino.h>
+#include "pico/time.h"
+#include "pico/unique_id.h"
 
 void aerid_system_get_firmware_version(aerid_version_t *version)
 {
