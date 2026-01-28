@@ -24,6 +24,7 @@
 #include "atecc508a.h"
 #include "atsha204a.h"
 #include "lvgl.h"
+#include "aerid_sdk/aerid_sdk.h"
 
 static QueueHandle_t usbQueue = NULL;
 static QueueHandle_t displayQueue = NULL;
@@ -70,6 +71,8 @@ void stat_gpio_callback(uint gpio, uint32_t events)
     }
 }
 
+void handle_input_event(aerid_input_t input, aerid_input_event_t event);
+
 void btn_gpio_callback(uint gpio, uint32_t events)
 {
     Message_t msg;
@@ -92,47 +95,33 @@ void btn_gpio_callback(uint gpio, uint32_t events)
     }
     last_press_time[idx] = now;
 
+    // TODO: check for long press / repeat here
+
     switch (gpio)
     {
     case BTN_DPAD_UP_PIN:
-        snprintf(msg.body, 128, "Button UP Pressed\r\n");
-        msg.level = LOG_DEBUG;
-        xQueueSendFromISR(usbQueue, (void *)&msg, 0);
+        handle_input_event(AERID_BUTTON_UP, events == GPIO_IRQ_EDGE_FALL ? AERID_INPUT_EVENT_PRESS : AERID_INPUT_EVENT_RELEASE);
         break;
     case BTN_DPAD_DOWN_PIN:
-        snprintf(msg.body, 128, "Button DOWN Pressed\r\n");
-        msg.level = LOG_DEBUG;
-        xQueueSendFromISR(usbQueue, (void *)&msg, 0);
+        handle_input_event(AERID_BUTTON_DOWN, events == GPIO_IRQ_EDGE_FALL ? AERID_INPUT_EVENT_PRESS : AERID_INPUT_EVENT_RELEASE);
         break;
     case BTN_DPAD_LEFT_PIN:
-        snprintf(msg.body, 128, "Button LEFT Pressed\r\n");
-        msg.level = LOG_DEBUG;
-        xQueueSendFromISR(usbQueue, (void *)&msg, 0);
+        handle_input_event(AERID_BUTTON_LEFT, events == GPIO_IRQ_EDGE_FALL ? AERID_INPUT_EVENT_PRESS : AERID_INPUT_EVENT_RELEASE);
         break;
     case BTN_DPAD_RIGHT_PIN:
-        snprintf(msg.body, 128, "Button RIGHT Pressed\r\n");
-        msg.level = LOG_DEBUG;
-        xQueueSendFromISR(usbQueue, (void *)&msg, 0);
+        handle_input_event(AERID_BUTTON_RIGHT, events == GPIO_IRQ_EDGE_FALL ? AERID_INPUT_EVENT_PRESS : AERID_INPUT_EVENT_RELEASE);
         break;
     case BTN_DPAD_CENTER_PIN:
-        snprintf(msg.body, 128, "Button CENTER Pressed\r\n");
-        msg.level = LOG_DEBUG;
-        xQueueSendFromISR(usbQueue, (void *)&msg, 0);
+        handle_input_event(AERID_BUTTON_CENTER, events == GPIO_IRQ_EDGE_FALL ? AERID_INPUT_EVENT_PRESS : AERID_INPUT_EVENT_RELEASE);
         break;
     case BTN_A_PIN:
-        snprintf(msg.body, 128, "Button A Pressed\r\n");
-        msg.level = LOG_DEBUG;
-        xQueueSendFromISR(usbQueue, (void *)&msg, 0);
+        handle_input_event(AERID_BUTTON_A, events == GPIO_IRQ_EDGE_FALL ? AERID_INPUT_EVENT_PRESS : AERID_INPUT_EVENT_RELEASE);
         break;
     case BTN_B_PIN:
-        snprintf(msg.body, 128, "Button B Pressed\r\n");
-        msg.level = LOG_DEBUG;
-        xQueueSendFromISR(usbQueue, (void *)&msg, 0);
+        handle_input_event(AERID_BUTTON_B, events == GPIO_IRQ_EDGE_FALL ? AERID_INPUT_EVENT_PRESS : AERID_INPUT_EVENT_RELEASE);
         break;
     default:
-        snprintf(msg.body, 128, "Unknown Button %d Pressed\r\n", gpio);
-        msg.level = LOG_WARN;
-        xQueueSendFromISR(usbQueue, (void *)&msg, 0);
+        // Invalid GPIO
         break;
     }
 }
