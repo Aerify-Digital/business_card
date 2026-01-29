@@ -1,38 +1,116 @@
 #include "aerid_sdk/aerid_fs.h"
+#include "sd_card.h"
 
 int aerid_fs_read_file(const char *filename, uint8_t *buffer, size_t max_len)
 {
-    // TODO: Implement file read functionality
+    if (!filename || !buffer || max_len == 0)
+        return -1;
+
+    sd_request_t req;
+    req.op = SD_OP_READ;
+    strncpy(req.filename, filename, sizeof(req.filename));
+    req.buffer = buffer;
+    req.length = max_len;
+    req.done = xSemaphoreCreateBinary();
+
+    xQueueSend(sdQueue, &req, portMAX_DELAY);
+    xSemaphoreTake(req.done, portMAX_DELAY);
+    vSemaphoreDelete(req.done);
+
+    if (req.result)
+    {
+        return req.length;
+    }
     return -1;
 }
 
 int aerid_fs_write_file(const char *filename, const uint8_t *data, size_t len)
 {
-    // TODO: Implement file write functionality
+    if (!filename || !data || len == 0)
+        return -1;
+
+    sd_request_t req;
+    req.op = SD_OP_WRITE;
+    strncpy(req.filename, filename, sizeof(req.filename));
+    req.buffer = (uint8_t *)data;
+    req.length = len;
+    req.done = xSemaphoreCreateBinary();
+
+    xQueueSend(sdQueue, &req, portMAX_DELAY);
+    xSemaphoreTake(req.done, portMAX_DELAY);
+    vSemaphoreDelete(req.done);
+    if (req.result)
+    {
+        return len;
+    }
     return -1;
 }
 
-int aerid_fs_delete_file(const char *filename)
+bool aerid_fs_delete_file(const char *filename)
 {
-    // TODO: Implement file delete functionality
-    return -1;
+    if (!filename)
+        return false;
+
+    sd_request_t req;
+    req.op = SD_OP_DELETE;
+    strncpy(req.filename, filename, sizeof(req.filename));
+    req.done = xSemaphoreCreateBinary();
+
+    xQueueSend(sdQueue, &req, portMAX_DELAY);
+    xSemaphoreTake(req.done, portMAX_DELAY);
+    vSemaphoreDelete(req.done);
+
+    if (req.result)
+    {
+        return true;
+    }
+    return false;
 }
 
-int aerid_fs_move_file(const char *old_filename, const char *new_filename)
+bool aerid_fs_move_file(const char *old_filename, const char *new_filename)
 {
-    // TODO: Implement file move/rename functionality
-    return -1;
+    if (!old_filename || !new_filename)
+        return false;
+
+    sd_request_t req;
+    req.op = SD_OP_RENAME;
+    strncpy(req.filename, old_filename, sizeof(req.filename));
+    req.buffer = (uint8_t *)new_filename;
+    req.done = xSemaphoreCreateBinary();
+
+    xQueueSend(sdQueue, &req, portMAX_DELAY);
+    xSemaphoreTake(req.done, portMAX_DELAY);
+    vSemaphoreDelete(req.done);
+
+    return req.result;
 }
 
-int aerid_fs_file_exists(const char *filename)
+bool aerid_fs_file_exists(const char *filename)
 {
+    if (!filename)
+        return false;
     // TODO: Implement file existence check
-    return 0;
+
+    return false;
 }
 
 int64_t aerid_fs_get_file_size(const char *filename)
 {
-    // TODO: Implement file size retrieval
+    if (!filename)
+        return -1;
+
+    sd_request_t req;
+    req.op = SD_OP_READ;
+    strncpy(req.filename, filename, sizeof(req.filename));
+    req.done = xSemaphoreCreateBinary();
+    xQueueSend(sdQueue, &req, portMAX_DELAY);
+    xSemaphoreTake(req.done, portMAX_DELAY);
+    vSemaphoreDelete(req.done);
+
+    if (req.result)
+    {
+        return req.length;
+    }
     return -1;
 }
 
@@ -42,10 +120,10 @@ int aerid_fs_list_files(char filenames[][64], size_t max_files)
     return -1;
 }
 
-int aerid_fs_is_mounted()
+bool aerid_fs_is_mounted()
 {
     // TODO: Implement mount status check
-    return 0;
+    return false;
 }
 
 int aerid_fs_get_space(uint64_t *total_bytes, uint64_t *free_bytes)

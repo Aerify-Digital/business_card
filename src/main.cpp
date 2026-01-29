@@ -221,7 +221,7 @@ void sd_task(void *pvParameters)
     snprintf(msg.body, 128, "SD Task Started\r\n");
     msg.level = LOG_DEBUG;
     xQueueSend(usbQueue, (void *)&msg, 0);
-
+    sd_request_t req;
     bool initialized = false;
     if (xSemaphoreTake(spi0_mutex, portMAX_DELAY) == pdTRUE)
     {
@@ -306,7 +306,39 @@ void sd_task(void *pvParameters)
             vTaskDelay(pdMS_TO_TICKS(1000));
         }
 
-        // TODO: Add queue and file operations here
+        if (xQueueReceive(sdQueue, &req, portMAX_DELAY) == pdTRUE)
+        {
+            if (req.done)
+            {
+                xSemaphoreTake(req.done, portMAX_DELAY);
+            }
+            xSemaphoreTake(spi0_mutex, portMAX_DELAY);
+            switch (req.op)
+            {
+            case SD_OP_READ:
+                req.length = readSDFile(req.filename, req.buffer, req.length);
+                req.result = req.length >= 0;
+                break;
+            case SD_OP_WRITE:
+                req.length = writeSDFile(req.filename, req.buffer, req.length);
+                req.result = req.length >= 0;
+                break;
+            case SD_OP_DELETE:
+                req.result = deleteSDFile(req.filename);
+                break;
+            case SD_OP_RENAME:
+                req.result = renameSDFile(req.filename, (const char *)req.buffer);
+                break;
+            default:
+                req.result = false;
+                break;
+            }
+            xSemaphoreGive(spi0_mutex);
+            if (req.done)
+            {
+                xSemaphoreGive(req.done);
+            }
+        }
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
@@ -539,6 +571,7 @@ void setup()
     usbQueue = xQueueCreate(MSG_QUEUE_LEN, sizeof(Message_t));
     displayQueue = xQueueCreate(MSG_QUEUE_LEN, sizeof(Message_t));      // TODO: add a display command struct
     buzzerQueue = xQueueCreate(MSG_QUEUE_LEN, sizeof(BuzzerCommand_t)); // TODO: update buzzer command to take melodies etc.
+    sdQueue = xQueueCreate(MSG_QUEUE_LEN, sizeof(sd_request_t));
 
     pinMode(SPI0_CS_PIN, OUTPUT);
     pinMode(EPD_RST_PIN, OUTPUT);

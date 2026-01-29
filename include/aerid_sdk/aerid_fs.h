@@ -19,19 +19,16 @@ extern "C"
     int aerid_fs_write_file(const char *filename, const uint8_t *data, size_t len);
 
     // Delete a file
-    // Returns 0 on success, -1 on error
     // All file operations are relative to the app's data directory
-    int aerid_fs_delete_file(const char *filename);
+    bool aerid_fs_delete_file(const char *filename);
 
     // Move/rename a file
-    // Returns 0 on success, -1 on error
     // All file operations are relative to the app's data directory
-    int aerid_fs_move_file(const char *old_filename, const char *new_filename);
+    bool aerid_fs_move_file(const char *old_filename, const char *new_filename);
 
     // Check if a file exists
-    // Returns 1 if the file exists, 0 if not
     // All file operations are relative to the app's data directory
-    int aerid_fs_file_exists(const char *filename);
+    bool aerid_fs_file_exists(const char *filename);
 
     // Get the size of a file
     // Returns the size in bytes, or -1 on error
@@ -44,8 +41,7 @@ extern "C"
     int aerid_fs_list_files(char filenames[][64], size_t max_files);
 
     // Get the mount status
-    // Returns 1 if mounted, 0 if not
-    int aerid_fs_is_mounted();
+    bool aerid_fs_is_mounted();
 
     // Get the total and free space
     // Returns 0 on success, -1 on error
