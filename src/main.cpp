@@ -350,11 +350,6 @@ void sd_task(void *pvParameters)
     }
 }
 
-static void set_angle(void *obj, int32_t v)
-{
-    lv_arc_set_value((lv_obj_t *)obj, v);
-}
-
 void display_task(void *pvParameters)
 {
     Message_t msg;
