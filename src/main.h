@@ -24,6 +24,7 @@
 #include "atecc508a.h"
 #include "atsha204a.h"
 #include "lvgl.h"
+#include "lvgl_epd_glue.h"
 #include "aerid_sdk/aerid_sdk.h"
 #include "aerid_sdk/aerid_sdk_internal.h"
 
@@ -40,10 +41,9 @@ static TaskHandle_t buttonTaskHandle = NULL;
 static TaskHandle_t i2cScanTaskHandle = NULL;
 static TaskHandle_t ateccTaskHandle = NULL;
 static TaskHandle_t atshaTaskHandle = NULL;
-
-SemaphoreHandle_t spi0_mutex;
-SemaphoreHandle_t i2c_default_mutex;
-SemaphoreHandle_t adc_mutex;
+SemaphoreHandle_t spi0_mutex = NULL;
+SemaphoreHandle_t i2c_default_mutex = NULL;
+SemaphoreHandle_t adc_mutex = NULL;
 
 SPIClassRP2040 SPI0(spi0, SPI0_MISO_PIN, SPI0_CS_PIN, SPI0_SCK_PIN, SPI0_MOSI_PIN);
 

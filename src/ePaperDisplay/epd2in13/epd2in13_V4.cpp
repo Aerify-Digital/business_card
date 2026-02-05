@@ -1,132 +1,20 @@
-/*****************************************************************************
-* | File      	:   epd2in13_V4.cpp
-* | Author      :   Waveshare team
-* | Function    :   2.13inch e-paper V4
-* | Info        :
-*----------------
-* |	This version:   V1.0
-* | Date        :   2023-6-25
-* | Info        :
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documnetation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to  whom the Software is
-# furished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS OR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-# THE SOFTWARE.
-#
-******************************************************************************/
 #include <stdlib.h>
 #include "epd2in13_V4.h"
 
 Epd2in13::~Epd2in13() {
 };
 
-/******************************************************************************
-function :	Pin definition
-parameter:
-******************************************************************************/
-Epd2in13::Epd2in13(SPIClassRP2040 *spi) : EpdIf(spi)
+Epd2in13::Epd2in13(SPIClassRP2040 *spi, SemaphoreHandle_t spi_mutex) : EpdIf(spi), spi_mutex(spi_mutex)
 {
     reset_pin = EPD_RST_PIN;
     dc_pin = EPD_DC_PIN;
     cs_pin = SPI0_CS_PIN;
     busy_pin = EPD_BUSY_PIN;
-    width = EPD_WIDTH;
-    height = EPD_HEIGHT;
-    bufwidth = 128 / 8; // 16
-    bufheight = 63;
+    bufwidth = EPD_WIDTH / 8;
+    bufheight = EPD_HEIGHT;
+    this->spi_mutex = spi_mutex;
 };
 
-/******************************************************************************
-function :	send command
-parameter:
-     command : Command register
-******************************************************************************/
-void Epd2in13::SendCommand(unsigned char command)
-{
-    DigitalWrite(dc_pin, LOW);
-    SpiTransfer(command);
-}
-
-/******************************************************************************
-function :	send data
-parameter:
-    Data : Write data
-******************************************************************************/
-void Epd2in13::SendData(unsigned char data)
-{
-    DigitalWrite(dc_pin, HIGH);
-    SpiTransfer(data);
-}
-
-/******************************************************************************
-function :	Wait until the busy_pin goes LOW
-parameter:
-******************************************************************************/
-void Epd2in13::WaitUntilIdle(void)
-{
-    while (1)
-    { // LOW: idle, HIGH: busy
-        if (DigitalRead(busy_pin) == 0)
-            break;
-        DelayMs(10);
-    }
-}
-
-/******************************************************************************
-function :	Setting the display window
-parameter:
-    Xstart : X-axis starting position
-    Ystart : Y-axis starting position
-    Xend : End position of X-axis
-    Yend : End position of Y-axis
-******************************************************************************/
-void Epd2in13::SetWindows(unsigned char Xstart, unsigned char Ystart, unsigned char Xend, unsigned char Yend)
-{
-    SendCommand(0x44); // SET_RAM_X_ADDRESS_START_END_POSITION
-    SendData((Xstart >> 3) & 0xFF);
-    SendData((Xend >> 3) & 0xFF);
-
-    SendCommand(0x45); // SET_RAM_Y_ADDRESS_START_END_POSITION
-    SendData(Ystart & 0xFF);
-    SendData((Ystart >> 8) & 0xFF);
-    SendData(Yend & 0xFF);
-    SendData((Yend >> 8) & 0xFF);
-}
-
-/******************************************************************************
-function :	Set Cursor
-parameter:
-    Xstart : X-axis starting position
-    Ystart : Y-axis starting position
-******************************************************************************/
-void Epd2in13::SetCursor(unsigned char Xstart, unsigned char Ystart)
-{
-    SendCommand(0x4E); // SET_RAM_X_ADDRESS_COUNTER
-    SendData(Xstart & 0xFF);
-
-    SendCommand(0x4F); // SET_RAM_Y_ADDRESS_COUNTER
-    SendData(Ystart & 0xFF);
-    SendData((Ystart >> 8) & 0xFF);
-}
-
-/******************************************************************************
-function :	Initialize the e-Paper register
-parameter:
-    Mode : Mode selection
-******************************************************************************/
 int Epd2in13::Init(char Mode)
 {
 
@@ -218,10 +106,84 @@ int Epd2in13::Init(char Mode)
     return 0;
 }
 
-/******************************************************************************
-function :	Software reset
-parameter:
-******************************************************************************/
+void Epd2in13::SendCommand(unsigned char command)
+{
+    if (spi_mutex)
+    {
+        if (xSemaphoreTake(spi_mutex, portMAX_DELAY) == pdTRUE)
+        {
+            DigitalWrite(dc_pin, LOW);
+            SpiTransfer(command);
+            xSemaphoreGive(spi_mutex);
+        }
+    }
+    else
+    {
+        DigitalWrite(dc_pin, LOW);
+        SpiTransfer(command);
+    }
+}
+
+void Epd2in13::SendData(unsigned char data)
+{
+    if (spi_mutex)
+    {
+        if (xSemaphoreTake(spi_mutex, portMAX_DELAY) == pdTRUE)
+        {
+            DigitalWrite(dc_pin, HIGH);
+            SpiTransfer(data);
+            xSemaphoreGive(spi_mutex);
+        }
+    }
+    else
+    {
+        DigitalWrite(dc_pin, HIGH);
+        SpiTransfer(data);
+    }
+}
+
+void Epd2in13::WaitUntilIdle(void)
+{
+    while (1)
+    { // LOW: idle, HIGH: busy
+        if (DigitalRead(busy_pin) == 0)
+            break;
+        DelayMs(10);
+    }
+}
+
+void Epd2in13::SetWindows(uint16_t Xstart, uint16_t Ystart, uint16_t Xend, uint16_t Yend)
+{
+    SendCommand(0x44); // SET_RAM_X_ADDRESS_START_END_POSITION
+    SendData((Xstart >> 3) & 0xFF);
+    SendData((Xend >> 3) & 0xFF);
+
+    SendCommand(0x45); // SET_RAM_Y_ADDRESS_START_END_POSITION
+    SendData(Ystart & 0xFF);
+    SendData((Ystart >> 8) & 0xFF);
+    SendData(Yend & 0xFF);
+    SendData((Yend >> 8) & 0xFF);
+}
+
+void Epd2in13::SetCursor(uint16_t Xstart, uint16_t Ystart)
+{
+    SendCommand(0x4E); // SET_RAM_X_ADDRESS_COUNTER
+    SendData(Xstart & 0xFF);
+
+    SendCommand(0x4F); // SET_RAM_Y_ADDRESS_COUNTER
+    SendData(Ystart & 0xFF);
+    SendData((Ystart >> 8) & 0xFF);
+}
+
+void Epd2in13::Lut(unsigned char *lut)
+{
+    SendCommand(0x32);
+    for (int i = 0; i < 153; i++)
+    {
+        SendData(lut[i]);
+    }
+}
+
 void Epd2in13::Reset(void)
 {
     DigitalWrite(reset_pin, HIGH);
@@ -233,10 +195,6 @@ void Epd2in13::Reset(void)
     this->count = 0;
 }
 
-/******************************************************************************
-function :	Clear screen
-parameter:
-******************************************************************************/
 void Epd2in13::Clear(void)
 {
     int w, h;
@@ -258,11 +216,6 @@ void Epd2in13::Clear(void)
     WaitUntilIdle();
 }
 
-/******************************************************************************
-function :	Sends the image buffer in RAM to e-Paper and displays
-parameter:
-    frame_buffer : Image data
-******************************************************************************/
 void Epd2in13::Display(const unsigned char *frame_buffer)
 {
     int w = (EPD_WIDTH % 8 == 0) ? (EPD_WIDTH / 8) : (EPD_WIDTH / 8 + 1);
@@ -312,11 +265,6 @@ void Epd2in13::Display1(const unsigned char *frame_buffer)
     }
 }
 
-/******************************************************************************
-function :	Sends the image buffer in RAM to e-Paper and fast displays
-parameter:
-    frame_buffer : Image data
-******************************************************************************/
 void Epd2in13::Display_Fast(const unsigned char *frame_buffer)
 {
     int w = (EPD_WIDTH % 8 == 0) ? (EPD_WIDTH / 8) : (EPD_WIDTH / 8 + 1);
@@ -341,14 +289,10 @@ void Epd2in13::Display_Fast(const unsigned char *frame_buffer)
     WaitUntilIdle();
 }
 
-/******************************************************************************
-function :	Refresh a base image
-parameter:
-    frame_buffer : Image data
-******************************************************************************/
 void Epd2in13::DisplayPartBaseImage(const unsigned char *frame_buffer)
 {
-    int w = (EPD_WIDTH % 8 == 0) ? (EPD_WIDTH / 8) : (EPD_WIDTH / 8 + 1);
+    // Use stride_bytes for correct row indexing (matches LVGL and most image generators)
+    int stride_bytes = (EPD_WIDTH + 7) / 8;
     int h = EPD_HEIGHT;
 
     if (frame_buffer != NULL)
@@ -356,18 +300,18 @@ void Epd2in13::DisplayPartBaseImage(const unsigned char *frame_buffer)
         SendCommand(0x24);
         for (int j = 0; j < h; j++)
         {
-            for (int i = 0; i < w; i++)
+            for (int i = 0; i < stride_bytes; i++)
             {
-                SendData(pgm_read_byte(&frame_buffer[i + j * w]));
+                SendData(pgm_read_byte(&frame_buffer[i + j * stride_bytes]));
             }
         }
 
         SendCommand(0x26);
         for (int j = 0; j < h; j++)
         {
-            for (int i = 0; i < w; i++)
+            for (int i = 0; i < stride_bytes; i++)
             {
-                SendData(pgm_read_byte(&frame_buffer[i + j * w]));
+                SendData(pgm_read_byte(&frame_buffer[i + j * stride_bytes]));
             }
         }
     }
@@ -379,14 +323,10 @@ void Epd2in13::DisplayPartBaseImage(const unsigned char *frame_buffer)
     WaitUntilIdle();
 }
 
-/******************************************************************************
-function :	Sends the image buffer in RAM to e-Paper and partial refresh
-parameter:
-    frame_buffer : Image data
-******************************************************************************/
 void Epd2in13::DisplayPart(const unsigned char *frame_buffer)
 {
-    int w = (EPD_WIDTH % 8 == 0) ? (EPD_WIDTH / 8) : (EPD_WIDTH / 8 + 1);
+    // Use stride_bytes for correct row indexing (matches LVGL and most image generators)
+    int stride_bytes = (EPD_WIDTH + 7) / 8;
     int h = EPD_HEIGHT;
 
     if (frame_buffer != NULL)
@@ -394,9 +334,9 @@ void Epd2in13::DisplayPart(const unsigned char *frame_buffer)
         SendCommand(0x24);
         for (int j = 0; j < h; j++)
         {
-            for (int i = 0; i < w; i++)
+            for (int i = 0; i < stride_bytes; i++)
             {
-                SendData(pgm_read_byte(&frame_buffer[i + j * w]));
+                SendData(pgm_read_byte(&frame_buffer[i + j * stride_bytes]));
             }
         }
     }
@@ -408,10 +348,6 @@ void Epd2in13::DisplayPart(const unsigned char *frame_buffer)
     WaitUntilIdle();
 }
 
-/******************************************************************************
-function :	Clear screen
-parameter:
-******************************************************************************/
 void Epd2in13::ClearPart(void)
 {
     int w, h;
@@ -433,10 +369,6 @@ void Epd2in13::ClearPart(void)
     WaitUntilIdle();
 }
 
-/******************************************************************************
-function :	Enter sleep mode
-parameter:
-******************************************************************************/
 void Epd2in13::Sleep()
 {
     SendCommand(0x10); // enter deep sleep
@@ -445,5 +377,3 @@ void Epd2in13::Sleep()
 
     DigitalWrite(reset_pin, LOW);
 }
-
-/* END OF FILE */

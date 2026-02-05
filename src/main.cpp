@@ -1,5 +1,12 @@
 #include "main.h"
 
+static EpdBase *epd = nullptr;
+
+extern "C" void vApplicationTickHook(void)
+{
+    lv_tick_inc(1);
+}
+
 void atecc_task(void *pvParameters)
 {
     Message_t msg;
@@ -343,6 +350,11 @@ void sd_task(void *pvParameters)
     }
 }
 
+static void set_angle(void *obj, int32_t v)
+{
+    lv_arc_set_value((lv_obj_t *)obj, v);
+}
+
 void display_task(void *pvParameters)
 {
     Message_t msg;
@@ -350,89 +362,127 @@ void display_task(void *pvParameters)
     msg.level = LOG_DEBUG;
     xQueueSend(usbQueue, (void *)&msg, 0);
 
-    // TODO: Initialize LVGL and e-Paper display here
-    //  lv_init();
-    //  lv_tick_set_cb(my_tick_cb);
-    //  lv_display_t * display = lv_display_create(TFT_HOR_RES, TFT_VER_RES);
-    /*Add rendering buffers to the screen.
-     *Here adding a smaller partial buffer assuming 1 bit color */
-    // static uint8_t buf[(WIDTH * HEIGHT + 7) / 8]; /* 1 bit color */
-    // lv_display_set_buffers(display, buf, NULL, sizeof(buf), LV_DISPLAY_RENDER_MODE_PARTIAL);
-
-    /*Add a callback that can flush the content from `buf` when it has been rendered*/
-    // lv_display_set_flush_cb(display, my_flush_cb);
-
-    // lv_indev_t * indev = lv_indev_create();
-    // lv_indev_set_type(indev, LV_INDEV_TYPE_KEYPAD);
-    // lv_indev_set_read_cb(indev, my_keypad_read_cb);
-
-    /* bool my_keypad_read_cb(lv_indev_t * indev, lv_indev_data_t * data) {
-    if (button_up_pressed) {
-        data->key = LV_KEY_UP;
-        data->state = LV_INDEV_STATE_PRESSED;
-    } else if (button_down_pressed) {
-        data->key = LV_KEY_DOWN;
-        data->state = LV_INDEV_STATE_PRESSED;
-    } else if (button_left_pressed) {
-        data->key = LV_KEY_LEFT;
-        data->state = LV_INDEV_STATE_PRESSED;
-    } else if (button_right_pressed) {
-        data->key = LV_KEY_RIGHT;
-        data->state = LV_INDEV_STATE_PRESSED;
-    } else if (button_center_pressed) {
-        data->key = LV_KEY_ENTER;
-        data->state = LV_INDEV_STATE_PRESSED;
-    } else if (button_a_pressed) {
-        data->key = LV_KEY_NEXT;
-        data->state = LV_INDEV_STATE_PRESSED;
-    } else if (button_b_pressed) {
-        data->key = LV_KEY_PREV;
-        data->state = LV_INDEV_STATE_PRESSED;
-    } else {
-        data->state = LV_INDEV_STATE_RELEASED;
-    }
-    return false;
-}*/
-
-    /*The drivers are in place; now we can create the UI*/
-    // lv_obj_t * label = lv_label_create(lv_screen_active());
-    // lv_label_set_text(label, "Hello world");
-    // lv_obj_center(label);
-
+    int offset = 0;
 #ifdef EPD_2IN13
-
+    epd = new Epd2in13(&SPI0, spi0_mutex);
+    epd->Init(FULL);
+    epd->Display(IMAGEDATA_2IN13);
+    offset = -53;
 #elif defined(EPD_2IN66)
-
+    epd = new Epd2in66(&SPI0, spi0_mutex);
+    epd->Init(FULL);
+    epd->Display(IMAGE_DATA_2IN66);
+    offset = -66;
 #else
 #ifndef I2C_SCAN
 #error "No e-Paper display selected"
 #endif
 #endif
+    vTaskDelay(pdMS_TO_TICKS(3000));
+    lv_init();
+    lv_tick_set_cb(lvgl_tick_cb);
 
+    lvgl_epaper_set_driver(epd);
+    lvgl_epaper_register_display(usbQueue);
+    snprintf(msg.body, 128, "LVGL Initialized\r\n");
+    msg.level = LOG_DEBUG;
+    xQueueSend(usbQueue, (void *)&msg, 0);
+
+    int screen_w = lv_obj_get_width(lv_scr_act());
+    int screen_h = lv_obj_get_height(lv_scr_act());
+
+    snprintf(msg.body, 128, "Screen dimensions: %dx%d\r\n", screen_w, screen_h);
+    msg.level = LOG_DEBUG;
+    xQueueSend(usbQueue, (void *)&msg, 0);
+
+    lv_obj_t *container = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(container, screen_w, screen_h);
+    lv_obj_set_layout(container, LV_LAYOUT_NONE);
+
+    lv_obj_t *loading = lv_label_create(container);
+    lv_obj_set_style_text_color(loading, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(loading, &lv_font_montserrat_20, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(loading, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_label_set_text(loading, "Loading.");
+
+    lv_obj_update_layout(loading);
+
+    lv_coord_t loading_w = lv_obj_get_width(loading);
+    lv_coord_t loading_h = lv_obj_get_height(loading);
+
+    lv_obj_set_style_transform_pivot_x(loading, loading_w / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_transform_pivot_y(loading, loading_h / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_transform_angle(loading, -900, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    lv_obj_update_layout(loading);
+
+    loading_w = lv_obj_get_width(loading);
+    loading_h = lv_obj_get_height(loading);
+
+    lv_obj_set_style_transform_pivot_x(loading, loading_w / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_transform_pivot_y(loading, loading_h / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+    // Manually offset to visually center the rotated label
+
+    snprintf(msg.body, 128, "Loading label dimensions: %dx%d offset=%d\r\n", loading_w, loading_h, offset);
+    msg.level = LOG_DEBUG;
+    xQueueSend(usbQueue, (void *)&msg, 0);
+
+    lv_obj_align(loading, LV_ALIGN_CENTER, offset, 0);
+
+    int count = 0;
     while (1)
     {
-        // lv_timer_handler();
-        if (xSemaphoreTake(spi0_mutex, portMAX_DELAY) == pdTRUE)
+        if (count <= 15)
         {
-#ifdef EPD_2IN13
+            if (count % 4 == 0)
+            {
+                int dots = ((count / 4) % 3) + 1;
+                switch (dots)
+                {
+                case 1:
+                    lv_label_set_text(loading, "Loading.");
+                    break;
+                case 2:
+                    lv_label_set_text(loading, "Loading..");
+                    break;
+                case 3:
+                    lv_label_set_text(loading, "Loading...");
+                    break;
+                }
+                lv_obj_update_layout(loading);
 
-#elif defined(EPD_2IN66)
+                loading_w = lv_obj_get_width(loading);
+                loading_h = lv_obj_get_height(loading);
 
-#else
-#ifndef I2C_SCAN
-#error "No e-Paper display selected"
-#endif
-#endif
-            xSemaphoreGive(spi0_mutex);
+                lv_obj_set_style_transform_pivot_x(loading, loading_w / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+                lv_obj_set_style_transform_pivot_y(loading, loading_h / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+                // Manually offset to visually center the rotated label
+
+                snprintf(msg.body, 128, "Loading label dimensions: %dx%d offset=-66\r\n", loading_w, loading_h);
+                msg.level = LOG_DEBUG;
+                xQueueSend(usbQueue, (void *)&msg, 0);
+
+                lv_obj_align(loading, LV_ALIGN_CENTER, -66, 0);
+            }
+            if (count == 15)
+            {
+                lv_obj_del_async(loading);
+                lv_obj_invalidate(lv_scr_act());
+                snprintf(msg.body, 128, "Display Task entering idle loop\r\n");
+                msg.level = LOG_DEBUG;
+                xQueueSend(usbQueue, (void *)&msg, 0);
+            }
+            count++;
         }
-        else
+
+        // TODO: create a queue to receive display update requests
+
+        uint32_t time_till_next = lv_timer_handler();
+        if (time_till_next == LV_NO_TIMER_READY)
         {
-            snprintf(msg.body, 128, "Failed to take SPI0 mutex for e-Paper display\r\n");
-            msg.level = LOG_ERROR;
-            xQueueSend(usbQueue, (void *)&msg, 0);
+            time_till_next = LV_DEF_REFR_PERIOD;
         }
-
-        vTaskDelay(pdMS_TO_TICKS(5));
+        vTaskDelay(pdMS_TO_TICKS(time_till_next));
     }
 }
 
@@ -595,7 +645,7 @@ void setup()
     I2C1.begin();
     xTaskCreate(bms_task, "BMS Task", 1024, NULL, 1, &bmsTaskHandle);
     xTaskCreate(sd_task, "SD Task", 4096, NULL, 1, &sdTaskHandle);
-    xTaskCreate(display_task, "Display Task", 4096, NULL, 1, &displayTaskHandle);
+    xTaskCreate(display_task, "Display Task", 16384, NULL, 1, &displayTaskHandle);
     xTaskCreate(buzzer_task, "Buzzer Task", 1024, NULL, 1, &buzzerTaskHandle);
     xTaskCreate(button_task, "Button Task", 512, NULL, 1, &buttonTaskHandle);
     xTaskCreate(atecc_task, "ATECC Task", 1024, NULL, 1, &ateccTaskHandle);

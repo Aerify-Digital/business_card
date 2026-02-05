@@ -28,7 +28,7 @@
 #include "epd2in66.h"
 #include "imagedata.h"
 
-static const UBYTE WF_PARTIAL[159] =
+static const unsigned char WF_PARTIAL[159] PROGMEM =
     {
         0x00,
         0x40,
@@ -194,239 +194,370 @@ static const UBYTE WF_PARTIAL[159] =
 Epd2in66::~Epd2in66() {
 };
 
-Epd2in66::Epd2in66(SPIClassRP2040 *spi) : EpdIf(spi)
+Epd2in66::Epd2in66(SPIClassRP2040 *spi, SemaphoreHandle_t spi_mutex) : EpdIf(spi), spi_mutex(spi_mutex)
 {
     reset_pin = EPD_RST_PIN;
     dc_pin = EPD_DC_PIN;
     cs_pin = SPI0_CS_PIN;
     busy_pin = EPD_BUSY_PIN;
-    width = EPD_WIDTH;
-    height = EPD_HEIGHT;
+    bufwidth = EPD_WIDTH / 8;
+    bufheight = EPD_HEIGHT;
+    this->spi_mutex = spi_mutex;
 };
 
-/**
- *  @brief: module reset.
- *          often used to awaken the module in deep sleep,
- *          see Epd::Sleep();
- */
 void Epd2in66::Reset(void)
 {
     DigitalWrite(reset_pin, LOW); // module reset
-    DelayMs(1);
+    DelayMs(100);
     DigitalWrite(reset_pin, HIGH);
     DelayMs(200);
 }
 
-/**
- *  @brief: Initialize the e-Paper register
- */
-int Epd2in66::Init(void)
+int Epd2in66::Init(char Mode)
 {
+    int count;
     Reset();
+    if (Mode == FULL)
+    {
+        Reset();
 
-    WaitUntilIdle();
-    SendCommand(0x12); // soft  reset
-    WaitUntilIdle();
-    /*	Y increment, X increment	*/
-    SendCommand(0x11);
-    SendData(0x03);
-    /*	Set RamX-address Start/End position	*/
-    SendCommand(0x44);
-    SendData(0x01);
-    SendData((width % 8 == 0) ? (width / 8) : (width / 8 + 1));
-    /*	Set RamY-address Start/End position	*/
-    SendCommand(0x45);
-    SendData(0);
-    SendData(0);
-    SendData((height & 0xff));
-    SendData((height & 0x100) >> 8);
+        WaitUntilIdle();
+        SendCommand(0x12); // soft  reset
+        WaitUntilIdle();
+        /*	Y increment, X increment	*/
+        SendCommand(0x11);
+        SendData(0x03);
+        /*	Set RamX-address Start/End position	*/
+        SendCommand(0x44);
+        SendData(0x01);
 
-    WaitUntilIdle();
+        SendData((GetWidth() % 8 == 0) ? (GetWidth() / 8) : (GetWidth() / 8 + 1));
+        /*	Set RamY-address Start/End position	*/
+        SendCommand(0x45);
+        SendData(0);
+        SendData(0);
+        SendData((GetHeight() & 0xff));
+        SendData((GetHeight() & 0x100) >> 8);
+
+        WaitUntilIdle();
+    }
+    else if (Mode == FAST)
+    {
+        Reset();
+        WaitUntilIdle();
+        SendCommand(0x12); // soft reset
+        WaitUntilIdle();
+
+        SendCommand(0x18); // Read built-in temperature sensor
+        SendData(0x80);
+
+        SendCommand(0x11); // data entry mode
+        SendData(0x03);
+
+        SetWindows(0, 0, EPD_WIDTH - 1, EPD_HEIGHT - 1);
+        SetCursor(0, 0);
+
+        SendCommand(0x22); // Load temperature value
+        SendData(0xB1);
+        SendCommand(0x20);
+        WaitUntilIdle();
+
+        SendCommand(0x1A); //  Write to temperature register
+        SendData(0x64);
+        SendData(0x00);
+
+        SendCommand(0x22); //  Load temperature value
+        SendData(0x91);
+        SendCommand(0x20);
+        WaitUntilIdle();
+    }
+    else if (Mode == PART)
+    {
+        Reset();
+        WaitUntilIdle();
+        SendCommand(0x12); // soft  reset
+        WaitUntilIdle();
+
+        Lut((unsigned char *)WF_PARTIAL);
+        SendCommand(0x37);
+        SendData(0x00);
+        SendData(0x00);
+        SendData(0x00);
+        SendData(0x00);
+        SendData(0x00);
+        SendData(0x40);
+        SendData(0x00);
+        SendData(0x00);
+        SendData(0x00);
+        SendData(0x00);
+
+        /* Y increment, X increment */
+        SendCommand(0x11);
+        SendData(0x03);
+        /*	Set RamX-address Start/End position	*/
+        SendCommand(0x44);
+        SendData(0x01);
+        SendData((GetWidth() % 8 == 0) ? (GetWidth() / 8) : (GetWidth() / 8 + 1));
+        /*	Set RamY-address Start/End position	*/
+        SendCommand(0x45);
+        SendData(0);
+        SendData(0);
+        SendData((GetHeight() & 0xff));
+        SendData((GetHeight() & 0x100) >> 8);
+
+        SendCommand(0x3C);
+        SendData(0x80);
+
+        SendCommand(0x22);
+        SendData(0xcf);
+        SendCommand(0x20);
+        WaitUntilIdle();
+    }
+    else
+    {
+        return -1;
+    }
+
     return 0;
 }
 
-/**
- *  @brief: Initialize the e-Paper register(Partial display)
- */
-int Epd2in66::Init_Partial(void)
-{
-    Reset();
-
-    WaitUntilIdle();
-    SendCommand(0x12); // soft  reset
-    WaitUntilIdle();
-
-    Load_LUT();
-    SendCommand(0x37);
-    SendData(0x00);
-    SendData(0x00);
-    SendData(0x00);
-    SendData(0x00);
-    SendData(0x00);
-    SendData(0x40);
-    SendData(0x00);
-    SendData(0x00);
-    SendData(0x00);
-    SendData(0x00);
-
-    /* Y increment, X increment */
-    SendCommand(0x11);
-    SendData(0x03);
-    /*	Set RamX-address Start/End position	*/
-    SendCommand(0x44);
-    SendData(0x01);
-    SendData((width % 8 == 0) ? (width / 8) : (width / 8 + 1));
-    /*	Set RamY-address Start/End position	*/
-    SendCommand(0x45);
-    SendData(0);
-    SendData(0);
-    SendData((height & 0xff));
-    SendData((height & 0x100) >> 8);
-
-    SendCommand(0x3C);
-    SendData(0x80);
-
-    SendCommand(0x22);
-    SendData(0xcf);
-    SendCommand(0x20);
-    WaitUntilIdle();
-    return 0;
-}
-
-/**
- *  @brief: basic function for sending commands
- */
 void Epd2in66::SendCommand(unsigned char command)
 {
-    DigitalWrite(dc_pin, LOW);
-    SpiTransfer(command);
+    if (spi_mutex)
+    {
+        if (xSemaphoreTake(spi_mutex, portMAX_DELAY) == pdTRUE)
+        {
+            DigitalWrite(dc_pin, LOW);
+            SpiTransfer(command);
+            xSemaphoreGive(spi_mutex);
+        }
+    }
+    else
+    {
+        DigitalWrite(dc_pin, LOW);
+        SpiTransfer(command);
+    }
 }
 
-/**
- *  @brief: basic function for sending data
- */
 void Epd2in66::SendData(unsigned char data)
 {
-    DigitalWrite(dc_pin, HIGH);
-    SpiTransfer(data);
+    if (spi_mutex)
+    {
+        if (xSemaphoreTake(spi_mutex, portMAX_DELAY) == pdTRUE)
+        {
+            DigitalWrite(dc_pin, HIGH);
+            SpiTransfer(data);
+            xSemaphoreGive(spi_mutex);
+        }
+    }
+    else
+    {
+        DigitalWrite(dc_pin, HIGH);
+        SpiTransfer(data);
+    }
 }
 
-/**
- *  @brief: Wait until the busy_pin goes HIGH
- */
 void Epd2in66::WaitUntilIdle(void)
 {
-    Serial.print("e-Paper busy \r\n ");
-    UBYTE busy;
-    do
+    while (DigitalRead(busy_pin) != 0)
     {
-        busy = DigitalRead(busy_pin);
-    } while (busy);
+        DelayMs(10);
+    }
     DelayMs(200);
-    Serial.print("e-Paper busy release \r\n ");
 }
 
-/******************************************************************************
-function :	Turn On Display
-parameter:
-******************************************************************************/
-void Epd2in66::TurnOnDisplay(void)
+void Epd2in66::SetWindows(uint16_t Xstart, uint16_t Ystart, uint16_t Xend, uint16_t Yend)
 {
+}
+
+void Epd2in66::SetCursor(uint16_t Xstart, uint16_t Ystart)
+{
+}
+
+void Epd2in66::Lut(unsigned char *lut)
+{
+    SendCommand(0x32);
+    for (unsigned int i = 0; i < 153; i++)
+    {
+        SendData(lut[i]);
+    }
+    WaitUntilIdle();
+}
+
+void Epd2in66::Clear(void)
+{
+    int w, h;
+    w = (EPD_WIDTH % 8 == 0) ? (EPD_WIDTH / 8) : (EPD_WIDTH / 8 + 1);
+    h = EPD_HEIGHT;
+    SendCommand(0x24);
+    for (int j = 0; j < h; j++)
+    {
+        for (int i = 0; i < w; i++)
+        {
+            SendData(0xFF);
+        }
+    }
+
+    // DISPLAY REFRESH
+    SendCommand(0x22);
+    SendData(0xf7);
     SendCommand(0x20);
     WaitUntilIdle();
 }
 
-/******************************************************************************
-function :  Display Array data
-******************************************************************************/
-void Epd2in66::DisplayFrame(const UBYTE *Image)
+void Epd2in66::Display(const unsigned char *frame_buffer)
 {
-    UWORD Width, Height;
-    Width = (width % 8 == 0) ? (width / 8) : (width / 8 + 1);
-    Height = height;
+    int w = (EPD_WIDTH % 8 == 0) ? (EPD_WIDTH / 8) : (EPD_WIDTH / 8 + 1);
+    int h = EPD_HEIGHT;
 
-    SendCommand(0x24);
-    for (UWORD j = 0; j < Height; j++)
+    if (frame_buffer != NULL)
     {
-        for (UWORD i = 0; i < Width; i++)
+        SendCommand(0x24);
+        for (int j = 0; j < h; j++)
         {
-            SendData(pgm_read_byte(&Image[i + j * Width]));
+            for (int i = 0; i < w; i++)
+            {
+                SendData(pgm_read_byte(&frame_buffer[i + j * w]));
+            }
         }
     }
-    TurnOnDisplay();
-}
 
-/******************************************************************************
-function :  Partial Display
-******************************************************************************/
-void Epd2in66::DisplayFrame_part(const UBYTE *Image, UWORD Xstart, UWORD Ystart, UWORD iwidth, UWORD iheight)
-{
-    UWORD Width, Height;
-    Width = (width % 8 == 0) ? (width / 8) : (width / 8 + 1);
-    Height = height;
-
-    SendCommand(0x24);
-    for (UWORD j = 0; j < Height; j++)
-    {
-        for (UWORD i = 0; i < Width; i++)
-        {
-            if (j >= Ystart && j < Ystart + iheight && i >= Xstart / 8 && i < (Xstart + iwidth) / 8)
-                SendData(Image[(i - Xstart / 8) + (j - Ystart) * iwidth / 8]);
-            else
-                SendData(0xff);
-        }
-    }
-    TurnOnDisplay();
-}
-
-/******************************************************************************
-function :  set the look-up tables
-parameter:
-******************************************************************************/
-void Epd2in66::Load_LUT(void)
-{
-    UWORD i;
-    SendCommand(0x32);
-    for (i = 0; i < 153; i++)
-    {
-        SendData(WF_PARTIAL[i]);
-    }
+    // DISPLAY REFRESH
+    SendCommand(0x22);
+    SendData(0xf7);
+    SendCommand(0x20);
     WaitUntilIdle();
 }
 
-/******************************************************************************
-function :  Clear Screen
-parameter:
-  mode: 0:just partial mode
-        1:clear all
-******************************************************************************/
-void Epd2in66::Clear(void)
+void Epd2in66::Display1(const unsigned char *frame_buffer)
 {
-    UWORD Width, Height;
-    Width = (width % 8 == 0) ? (width / 8) : (width / 8 + 1);
-    Height = height;
-    SendCommand(0x24);
-    for (UWORD j = 0; j <= Height; j++)
+    if (this->count == 0)
     {
-        for (UWORD i = 0; i < Width; i++)
+        SendCommand(0x24);
+        this->count++;
+    }
+    else if (this->count > 0 && this->count < 4)
+    {
+        this->count++;
+    }
+    for (int i = 0; i < this->bufwidth * this->bufheight; i++)
+    {
+        SendData(frame_buffer[i]);
+    }
+    if (this->count == 4)
+    {
+        SendCommand(0x22);
+        SendData(0xf7);
+        SendCommand(0x20);
+        WaitUntilIdle();
+        this->count = 0;
+    }
+}
+
+void Epd2in66::Display_Fast(const unsigned char *frame_buffer)
+{
+    int w = (EPD_WIDTH % 8 == 0) ? (EPD_WIDTH / 8) : (EPD_WIDTH / 8 + 1);
+    int h = EPD_HEIGHT;
+
+    if (frame_buffer != NULL)
+    {
+        SendCommand(0x24);
+        for (int j = 0; j < h; j++)
+        {
+            for (int i = 0; i < w; i++)
+            {
+                SendData(pgm_read_byte(&frame_buffer[i + j * w]));
+            }
+        }
+    }
+
+    // DISPLAY REFRESH
+    SendCommand(0x22);
+    SendData(0xC7);
+    SendCommand(0x20);
+    WaitUntilIdle();
+}
+
+void Epd2in66::DisplayPartBaseImage(const unsigned char *frame_buffer)
+{
+    int w = (EPD_WIDTH % 8 == 0) ? (EPD_WIDTH / 8) : (EPD_WIDTH / 8 + 1);
+    int h = EPD_HEIGHT;
+
+    if (frame_buffer != NULL)
+    {
+        SendCommand(0x24);
+        for (int j = 0; j < h; j++)
+        {
+            for (int i = 0; i < w; i++)
+            {
+                SendData(pgm_read_byte(&frame_buffer[i + j * w]));
+            }
+        }
+
+        SendCommand(0x26);
+        for (int j = 0; j < h; j++)
+        {
+            for (int i = 0; i < w; i++)
+            {
+                SendData(pgm_read_byte(&frame_buffer[i + j * w]));
+            }
+        }
+    }
+
+    // DISPLAY REFRESH
+    SendCommand(0x22);
+    SendData(0xf7);
+    SendCommand(0x20);
+    WaitUntilIdle();
+}
+
+void Epd2in66::DisplayPart(const unsigned char *frame_buffer)
+{
+    int w = (EPD_WIDTH % 8 == 0) ? (EPD_WIDTH / 8) : (EPD_WIDTH / 8 + 1);
+    int h = EPD_HEIGHT;
+
+    if (frame_buffer != NULL)
+    {
+        SendCommand(0x24);
+        for (int j = 0; j < h; j++)
+        {
+            for (int i = 0; i < w; i++)
+            {
+                SendData(pgm_read_byte(&frame_buffer[i + j * w]));
+            }
+        }
+    }
+
+    // DISPLAY REFRESH
+    SendCommand(0x22);
+    SendData(0xff);
+    SendCommand(0x20);
+    WaitUntilIdle();
+}
+
+void Epd2in66::ClearPart(void)
+{
+    int w, h;
+    w = (EPD_WIDTH % 8 == 0) ? (EPD_WIDTH / 8) : (EPD_WIDTH / 8 + 1);
+    h = EPD_HEIGHT;
+    SendCommand(0x24);
+    for (int j = 0; j < h; j++)
+    {
+        for (int i = 0; i < w; i++)
         {
             SendData(0xff);
         }
     }
-    TurnOnDisplay();
+
+    // DISPLAY REFRESH
+    SendCommand(0x22);
+    SendData(0x0f);
+    SendCommand(0x20);
+    WaitUntilIdle();
 }
 
-/**
- *  @brief: After this command is transmitted, the chip would enter the
- *          deep-sleep mode to save power.
- *          The deep sleep mode would return to standby by hardware reset.
- *          The only one parameter is a check code, the command would be
- *          You can use EPD_Reset() to awaken
- */
 void Epd2in66::Sleep(void)
 {
-    SendCommand(0X10);
+    SendCommand(0x10);
     SendData(0x01);
 }
-
-/* END OF FILE */
