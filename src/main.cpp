@@ -357,23 +357,32 @@ void display_task(void *pvParameters)
     msg.level = LOG_DEBUG;
     xQueueSend(usbQueue, (void *)&msg, 0);
 
-    int offset = 0;
+    static const unsigned char *splash_data = nullptr;
+    static const unsigned char splash_palette[8] =
+        {
+            0xfe,
+            0xfe,
+            0xfe,
+            0xff,
+            0x00,
+            0x00,
+            0x00,
+            0xff};
+
 #ifdef EPD_2IN13
     epd = new Epd2in13(&SPI0, spi0_mutex);
     epd->Init(FULL);
-    epd->Display(IMAGEDATA_2IN13);
-    offset = -53;
+    splash_data = IMAGE_DATA_2IN13;
 #elif defined(EPD_2IN66)
     epd = new Epd2in66(&SPI0, spi0_mutex);
     epd->Init(FULL);
-    epd->Display(IMAGE_DATA_2IN66);
-    offset = -66;
+    splash_data = IMAGE_DATA_2IN66;
 #else
 #ifndef I2C_SCAN
 #error "No e-Paper display selected"
 #endif
 #endif
-    vTaskDelay(pdMS_TO_TICKS(3000));
+
     lv_init();
     lv_tick_set_cb(lvgl_tick_cb);
 
@@ -393,6 +402,64 @@ void display_task(void *pvParameters)
     lv_obj_t *container = lv_obj_create(lv_scr_act());
     lv_obj_set_size(container, screen_w, screen_h);
     lv_obj_set_layout(container, LV_LAYOUT_NONE);
+
+    const uint16_t splash_width = epd->GetWidth();
+    const uint16_t splash_height = epd->GetHeight();
+    const uint16_t splash_stride = (splash_width + 7) / 8;
+    const size_t splash_img_size = splash_stride * splash_height;
+
+    uint8_t splash_data_prefixed[8 + splash_img_size];
+
+    memcpy(splash_data_prefixed, splash_palette, 8);
+
+    // Copy image data row-by-row to ensure correct stride alignment
+    for (uint16_t row = 0; row < splash_height; ++row)
+    {
+        for (uint16_t col_byte = 0; col_byte < splash_stride; ++col_byte)
+        {
+            size_t src_idx = row * splash_stride + col_byte;
+            size_t dst_idx = 8 + row * splash_stride + col_byte;
+            splash_data_prefixed[dst_idx] = pgm_read_byte(&splash_data[src_idx]);
+        }
+    }
+
+    // Debug: print first 16 bytes of splash_data_prefixed (palette + image)
+    char debug_buf[128];
+    int debug_len = 0;
+    debug_len += snprintf(debug_buf + debug_len, sizeof(debug_buf) - debug_len, "splash_data_prefixed: ");
+    for (int i = 0; i < 16 && i < (8 + splash_img_size); ++i)
+    {
+        debug_len += snprintf(debug_buf + debug_len, sizeof(debug_buf) - debug_len, "%02X ", splash_data_prefixed[i]);
+    }
+    debug_len += snprintf(debug_buf + debug_len, sizeof(debug_buf) - debug_len, "\r\n");
+    msg.level = LOG_DEBUG;
+    snprintf(msg.body, 128, "%s", debug_buf);
+    xQueueSend(usbQueue, (void *)&msg, 0);
+
+    static lv_img_dsc_t splash_img_dsc = {
+        {LV_IMAGE_HEADER_MAGIC, // header.magic
+         LV_COLOR_FORMAT_I1,    // header.cf
+         0,                     // header.flags
+         splash_width,          // header.width
+         splash_height,         // header.height
+         splash_stride,         // header.stride
+         0},                    // header.reserved
+        splash_img_size + 8,    // data length                                                                               // data_size
+        splash_data_prefixed,   // data
+    };
+
+    lv_obj_t *splash_img = lv_img_create(container);
+    lv_img_set_src(splash_img, &splash_img_dsc);
+
+    lv_obj_set_style_transform_pivot_x(splash_img, splash_width / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_transform_pivot_y(splash_img, splash_height / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_align(splash_img, LV_ALIGN_CENTER, 0, 0);
+    lv_timer_handler();
+
+    vTaskDelay(pdMS_TO_TICKS(3000));
+
+    lv_obj_del_async(splash_img);
+    lv_obj_invalidate(lv_scr_act());
 
     lv_obj_t *loading = lv_label_create(container);
     lv_obj_set_style_text_color(loading, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -416,13 +483,8 @@ void display_task(void *pvParameters)
 
     lv_obj_set_style_transform_pivot_x(loading, loading_w / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_transform_pivot_y(loading, loading_h / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
-    // Manually offset to visually center the rotated label
 
-    snprintf(msg.body, 128, "Loading label dimensions: %dx%d offset=%d\r\n", loading_w, loading_h, offset);
-    msg.level = LOG_DEBUG;
-    xQueueSend(usbQueue, (void *)&msg, 0);
-
-    lv_obj_align(loading, LV_ALIGN_CENTER, offset, 0);
+    lv_obj_align(loading, LV_ALIGN_CENTER, 0, 0);
 
     int count = 0;
     while (1)
@@ -449,15 +511,7 @@ void display_task(void *pvParameters)
                 loading_w = lv_obj_get_width(loading);
                 loading_h = lv_obj_get_height(loading);
 
-                lv_obj_set_style_transform_pivot_x(loading, loading_w / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
-                lv_obj_set_style_transform_pivot_y(loading, loading_h / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
-                // Manually offset to visually center the rotated label
-
-                snprintf(msg.body, 128, "Loading label dimensions: %dx%d offset=-66\r\n", loading_w, loading_h);
-                msg.level = LOG_DEBUG;
-                xQueueSend(usbQueue, (void *)&msg, 0);
-
-                lv_obj_align(loading, LV_ALIGN_CENTER, -66, 0);
+                lv_obj_align(loading, LV_ALIGN_CENTER, 0, 0);
             }
             if (count == 15)
             {

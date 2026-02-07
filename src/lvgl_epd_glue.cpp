@@ -33,6 +33,22 @@ void lvgl_epaper_flush(lv_display_t *display, const lv_area_t *area, uint8_t *px
     snprintf(msg.body, 128, "lvgl_epaper_flush called\r\n");
     msg.level = LOG_DEBUG;
     xQueueSend(debug_queue, (void *)&msg, 0);
+
+    // Debug: print first 16 bytes of px_map for this flush
+    {
+        char debug_buf[128];
+        int debug_len = 0;
+        debug_len += snprintf(debug_buf + debug_len, sizeof(debug_buf) - debug_len, "px_map: ");
+        int px_map_len = ((area->x2 - area->x1 + 1 + 7) / 8) * (area->y2 - area->y1 + 1);
+        for (int i = 0; i < 16 && i < px_map_len; ++i)
+        {
+            debug_len += snprintf(debug_buf + debug_len, sizeof(debug_buf) - debug_len, "%02X ", px_map[i]);
+        }
+        debug_len += snprintf(debug_buf + debug_len, sizeof(debug_buf) - debug_len, "\r\n");
+        msg.level = LOG_DEBUG;
+        snprintf(msg.body, 128, "%s", debug_buf);
+        xQueueSend(debug_queue, (void *)&msg, 0);
+    }
     if (!epaper_drv)
     {
         lv_disp_flush_ready(display);
@@ -52,68 +68,36 @@ void lvgl_epaper_flush(lv_display_t *display, const lv_area_t *area, uint8_t *px
     msg.level = LOG_DEBUG;
     xQueueSend(debug_queue, (void *)&msg, 0);
 
-    // For troubleshooting, sample first 8 bytes of px_map
-    char px_sample[32] = {0};
-    int sample_len = ((area_w + 7) / 8) * area_h;
-    if (sample_len > 8)
-        sample_len = 8;
-    for (int i = 0; i < sample_len; ++i)
+    if (area->x1 == 0 && area->y1 == 0 && area->x2 == width - 1 && area->y2 == height - 1)
     {
-        snprintf(px_sample + i * 3, 4, "%02X ", px_map[i]);
+        epaper_drv->Display(px_map + 8);
+        lv_disp_flush_ready(display);
+        return;
     }
-
-    snprintf(msg.body, 128, "px_map sample (first %d bytes): %s\r\n", sample_len, px_sample);
-    msg.level = LOG_DEBUG;
-    xQueueSend(debug_queue, (void *)&msg, 0);
-
-    // Copy px_map to lvgl_buf at the area specified, handling byte alignment and bit inversion
-    bool byte_aligned = (area->x1 % 8 == 0);
-    int src_stride = (area_w + 7) / 8;
-    size_t buf_size = stride_bytes * height;
-    for (int y = 0; y < area_h; ++y)
+    else
     {
-        int src_row = y * src_stride;
-        int dst_row = (area->y1 + y) * stride_bytes;
-        if (byte_aligned)
+        // Partial update, we need to copy row by row into the correct position in lvgl_buf
+        for (int row = 0; row < area_h; ++row)
         {
-            // Fast path: area->x1 is byte-aligned, can copy whole bytes
-            int dst_byte = dst_row + (area->x1 / 8);
-            for (int x_byte = 0; x_byte < src_stride; ++x_byte)
+            int dest_row = area->y1 + row;
+            if (dest_row >= height)
+                break; // Safety check
+
+            int dest_byte_index = (area->x1 / 8) + dest_row * stride_bytes;
+            int src_byte_index = row * ((area_w + 7) / 8);
+
+            // Copy the relevant bytes for this row
+            for (int col_byte = 0; col_byte < (area_w + 7) / 8; ++col_byte)
             {
-                int src_idx = src_row + x_byte;
-                int dst_idx = dst_byte + x_byte;
-                if (dst_idx < 0 || (size_t)dst_idx >= buf_size)
-                    continue;
-                lvgl_buf[dst_idx] = ~px_map[src_idx];
-            }
-        }
-        else
-        {
-            // Slow path: not byte-aligned, must copy bit-by-bit
-            for (int x = 0; x < area_w; ++x)
-            {
-                int abs_x = area->x1 + x;
-                int abs_y = area->y1 + y;
-                int px_index = y * area_w + x;
-                int px_byte = px_index / 8;
-                int px_bit = 7 - (px_index % 8);
-                uint8_t px_val = (px_map[px_byte] >> px_bit) & 0x1;
-                uint8_t epd_val = px_val ? 0 : 1;
-                int buf_index = abs_y * width + abs_x;
-                int buf_byte = buf_index / 8;
-                int buf_bit = 7 - (buf_index % 8);
-                if (buf_byte < 0 || (size_t)buf_byte >= buf_size)
-                    continue;
-                if (epd_val)
-                    lvgl_buf[buf_byte] |= (1 << buf_bit);
-                else
-                    lvgl_buf[buf_byte] &= ~(1 << buf_bit);
+                if (dest_byte_index + col_byte >= stride_bytes * height)
+                    break; // Safety check
+                lvgl_buf[dest_byte_index + col_byte] = px_map[src_byte_index + col_byte];
             }
         }
     }
 
-    // Send the full buffer to the e-paper display
-    epaper_drv->Display(lvgl_buf);
+    // Send only the pixel data (skip palette) to the e-paper display
+    epaper_drv->Display(lvgl_buf + 8);
     lv_disp_flush_ready(display);
 }
 
@@ -151,8 +135,6 @@ void lvgl_epaper_register_display(QueueHandle_t dbg_queue)
     lv_display_set_flush_cb(display, lvgl_epaper_flush);
 
     lv_display_set_default(display);
-
-    lv_display_set_rotation(display, LV_DISPLAY_ROTATION_0);
 
     snprintf(msg.body, 128, "e-Paper display registered with LVGL\r\n");
     msg.level = LOG_DEBUG;
