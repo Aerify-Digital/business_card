@@ -34,21 +34,6 @@ void lvgl_epaper_flush(lv_display_t *display, const lv_area_t *area, uint8_t *px
     msg.level = LOG_DEBUG;
     xQueueSend(debug_queue, (void *)&msg, 0);
 
-    // Debug: print first 16 bytes of px_map for this flush
-    {
-        char debug_buf[128];
-        int debug_len = 0;
-        debug_len += snprintf(debug_buf + debug_len, sizeof(debug_buf) - debug_len, "px_map: ");
-        int px_map_len = ((area->x2 - area->x1 + 1 + 7) / 8) * (area->y2 - area->y1 + 1);
-        for (int i = 0; i < 16 && i < px_map_len; ++i)
-        {
-            debug_len += snprintf(debug_buf + debug_len, sizeof(debug_buf) - debug_len, "%02X ", px_map[i]);
-        }
-        debug_len += snprintf(debug_buf + debug_len, sizeof(debug_buf) - debug_len, "\r\n");
-        msg.level = LOG_DEBUG;
-        snprintf(msg.body, 128, "%s", debug_buf);
-        xQueueSend(debug_queue, (void *)&msg, 0);
-    }
     if (!epaper_drv)
     {
         lv_disp_flush_ready(display);

@@ -7,6 +7,191 @@ extern "C" void vApplicationTickHook(void)
     lv_tick_inc(1);
 }
 
+void splash_screen()
+{
+    Message_t msg;
+    snprintf(msg.body, 128, "Displaying splash screen\r\n");
+    msg.level = LOG_DEBUG;
+    xQueueSend(usbQueue, (void *)&msg, 0);
+
+    int screen_w = lv_obj_get_width(lv_scr_act());
+    int screen_h = lv_obj_get_height(lv_scr_act());
+
+    snprintf(msg.body, 128, "Screen dimensions: %dx%d\r\n", screen_w, screen_h);
+    msg.level = LOG_DEBUG;
+    xQueueSend(usbQueue, (void *)&msg, 0);
+    static const unsigned char *splash_data = nullptr;
+
+#ifdef EPD_2IN13
+    splash_data = IMAGE_DATA_2IN13;
+#elif defined(EPD_2IN66)
+    splash_data = IMAGE_DATA_2IN66;
+#else
+#ifndef I2C_SCAN
+#error "No e-Paper display selected"
+#endif
+#endif
+
+    const uint16_t splash_stride = (screen_w + 7) / 8;
+    const size_t splash_img_size = splash_stride * screen_h;
+
+    uint8_t splash_data_prefixed[8 + splash_img_size];
+
+    memcpy(splash_data_prefixed, LVGL_PALETTE, 8);
+
+    for (uint16_t row = 0; row < screen_h; ++row)
+    {
+        for (uint16_t col_byte = 0; col_byte < splash_stride; ++col_byte)
+        {
+            size_t src_idx = row * splash_stride + col_byte;
+            size_t dst_idx = 8 + row * splash_stride + col_byte;
+            splash_data_prefixed[dst_idx] = pgm_read_byte(&splash_data[src_idx]);
+        }
+    }
+
+    lv_obj_t *container = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(container, screen_w, screen_h);
+    lv_obj_set_layout(container, LV_LAYOUT_NONE);
+
+    static lv_img_dsc_t splash_img_dsc = {
+        {LV_IMAGE_HEADER_MAGIC, // header.magic
+         LV_COLOR_FORMAT_I1,    // header.cf
+         0,                     // header.flags
+         (uint16_t)screen_w,    // header.width
+         (uint16_t)screen_h,    // header.height
+         splash_stride,         // header.stride
+         0},                    // header.reserved
+        splash_img_size + 8,    // data length                                                                               // data_size
+        splash_data_prefixed,   // data
+    };
+
+    lv_obj_t *splash_img = lv_img_create(container);
+    lv_img_set_src(splash_img, &splash_img_dsc);
+
+    lv_obj_set_style_transform_pivot_x(splash_img, screen_w / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_transform_pivot_y(splash_img, screen_h / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_align(splash_img, LV_ALIGN_CENTER, 0, 0);
+    lv_timer_handler();
+}
+
+void launcher_task(void *pvParameters)
+{
+    Message_t msg;
+    snprintf(msg.body, 128, "Launcher Task Started\r\n");
+    msg.level = LOG_DEBUG;
+    xQueueSend(usbQueue, (void *)&msg, 0);
+
+    constexpr int NUM_COMPONENTS = 8; // display, buttons, BMS, SD card, ATECC508A, ATSHA204A, buzzer, NFC
+    constexpr int ALL_READY_MASK = (1 << NUM_COMPONENTS) - 1;
+
+    int ready_flags = 0;
+    int ready_id = -1;
+    while (ready_flags != ALL_READY_MASK)
+    {
+        xQueueReceive(launcherQueue, &ready_id, portMAX_DELAY);
+        ready_flags |= (1 << ready_id);
+        snprintf(msg.body, 128, "Received ready signal from component %d, ready_flags=0x%02X\r\n", ready_id, ready_flags);
+        msg.level = LOG_DEBUG;
+        xQueueSend(usbQueue, (void *)&msg, 0);
+        if (ready_id == 1) // display ready start loading animation
+        {
+            snprintf(msg.body, 128, "Display is ready, starting loading animation\r\n");
+            msg.level = LOG_DEBUG;
+            xQueueSend(usbQueue, (void *)&msg, 0);
+            // send message to display task to clear screen and show loading animation
+            lv_init();
+            lv_tick_set_cb(lvgl_tick_cb);
+
+            lvgl_epaper_set_driver(epd);
+            lvgl_epaper_register_display(usbQueue);
+            snprintf(msg.body, 128, "LVGL Initialized\r\n");
+            msg.level = LOG_DEBUG;
+            xQueueSend(usbQueue, (void *)&msg, 0);
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    snprintf(msg.body, 128, "All components ready, initializing launcher\r\n");
+    msg.level = LOG_DEBUG;
+    xQueueSend(usbQueue, (void *)&msg, 0);
+
+    splash_screen();
+    vTaskDelay(pdMS_TO_TICKS(3000));
+
+    lv_obj_clean(lv_scr_act());
+    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_t *loading = lv_label_create(lv_scr_act());
+    lv_obj_set_style_text_color(loading, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(loading, &lv_font_montserrat_20, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(loading, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_label_set_text(loading, "Loading");
+
+    lv_obj_update_layout(loading);
+
+    lv_coord_t loading_w = lv_obj_get_width(loading);
+    lv_coord_t loading_h = lv_obj_get_height(loading);
+
+    lv_obj_set_style_transform_pivot_x(loading, loading_w / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_transform_pivot_y(loading, loading_h / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_transform_angle(loading, -900, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    lv_obj_update_layout(loading);
+
+    loading_w = lv_obj_get_width(loading);
+    loading_h = lv_obj_get_height(loading);
+
+    lv_obj_set_style_transform_pivot_x(loading, loading_w / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_transform_pivot_y(loading, loading_h / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    lv_obj_align(loading, LV_ALIGN_CENTER, 0, 0);
+    lv_timer_handler();
+
+    auto input_callback = [](aerid_input_t input, aerid_input_event_t event)
+    {
+        Message_t msg;
+        snprintf(msg.body, 128, "Received input event: input=%d event=%d\r\n", input, event);
+        msg.level = LOG_DEBUG;
+        xQueueSendFromISR(usbQueue, (void *)&msg, 0); // needs to be thread safe since it can be called from ISR, use FromISR version of xQueueSend
+    };
+
+    aerid_launcher_init(usbQueue, input_callback);
+    // TODO: Initialize the launcher
+    vTaskDelay(pdMS_TO_TICKS(3000)); // small delay emulate launcher initialization time
+
+    lv_obj_clean(lv_scr_act());
+
+    TickType_t last_display_tick = xTaskGetTickCount();
+
+    while (1)
+    {
+        TickType_t now = xTaskGetTickCount();
+
+        if ((now - last_display_tick) >= LV_DEF_REFR_PERIOD)
+        {
+            lv_timer_handler();
+            last_display_tick = now;
+        }
+
+        // Handle other launcher events here (buttons, app logic, etc.)
+
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+}
+
+void nfc_task(void *pvParameters)
+{
+    Message_t msg;
+    snprintf(msg.body, 128, "NFC Task Started\r\n");
+    msg.level = LOG_DEBUG;
+    xQueueSend(usbQueue, (void *)&msg, 0);
+
+    int ready_id = 6;
+    xQueueSend(launcherQueue, (void *)&ready_id, portMAX_DELAY); // signal launcher task that NFC is ready
+    while (1)
+    {
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
 void atecc_task(void *pvParameters)
 {
     Message_t msg;
@@ -42,6 +227,8 @@ void atecc_task(void *pvParameters)
         }
     }
 
+    int ready_id = 4;
+    xQueueSend(launcherQueue, (void *)&ready_id, portMAX_DELAY); // signal launcher task that ATECC508A is ready
     while (1)
     {
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -55,6 +242,10 @@ void atsha_task(void *pvParameters)
     msg.level = LOG_DEBUG;
     xQueueSend(usbQueue, (void *)&msg, 0);
 
+    // TODO: implement ATSHA204A initialization and functionality
+
+    int ready_id = 5;
+    xQueueSend(launcherQueue, (void *)&ready_id, portMAX_DELAY); // signal launcher task that ATSHA204A is ready
     while (1)
     {
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -77,6 +268,8 @@ void button_task(void *pvParameters)
         gpio_set_irq_enabled_with_callback(pin, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true, &btn_gpio_callback);
     }
 
+    int ready_id = 2;
+    xQueueSend(launcherQueue, (void *)&ready_id, portMAX_DELAY); // signal launcher task that buttons are ready
     while (1)
     {
         vTaskDelay(pdMS_TO_TICKS(20));
@@ -171,6 +364,9 @@ void bms_task(void *pvParameters)
         return result;
     };
 
+    int ready_id = 0;
+    xQueueSend(launcherQueue, (void *)&ready_id, portMAX_DELAY); // signal launcher task that BMS is ready
+
     vTaskDelay(pdMS_TO_TICKS(2000));
 
     float voltage = 0.0f;
@@ -179,6 +375,7 @@ void bms_task(void *pvParameters)
     snprintf(msg.body, 128, ">battery_voltage:%.2fV\r\n", voltage);
     msg.level = LOG_DEBUG;
     xQueueSend(usbQueue, (void *)&msg, 0);
+
     while (1)
     {
         status = read_status();
@@ -255,6 +452,9 @@ void sd_task(void *pvParameters)
         msg.level = LOG_DEBUG;
         xQueueSend(usbQueue, (void *)&msg, 0);
     }
+
+    int ready_id = 3;
+    xQueueSend(launcherQueue, (void *)&ready_id, portMAX_DELAY); // signal launcher task that SD card is ready
 
     while (1)
     {
@@ -357,181 +557,27 @@ void display_task(void *pvParameters)
     msg.level = LOG_DEBUG;
     xQueueSend(usbQueue, (void *)&msg, 0);
 
-    static const unsigned char *splash_data = nullptr;
-    static const unsigned char splash_palette[8] =
-        {
-            0xfe,
-            0xfe,
-            0xfe,
-            0xff,
-            0x00,
-            0x00,
-            0x00,
-            0xff};
-
 #ifdef EPD_2IN13
     epd = new Epd2in13(&SPI0, spi0_mutex);
     epd->Init(FULL);
-    splash_data = IMAGE_DATA_2IN13;
 #elif defined(EPD_2IN66)
     epd = new Epd2in66(&SPI0, spi0_mutex);
     epd->Init(FULL);
-    splash_data = IMAGE_DATA_2IN66;
 #else
 #ifndef I2C_SCAN
 #error "No e-Paper display selected"
 #endif
 #endif
 
-    lv_init();
-    lv_tick_set_cb(lvgl_tick_cb);
+    int ready_id = 1;
+    xQueueSend(launcherQueue, &ready_id, portMAX_DELAY); // signal launcher task that display is ready
 
-    lvgl_epaper_set_driver(epd);
-    lvgl_epaper_register_display(usbQueue);
-    snprintf(msg.body, 128, "LVGL Initialized\r\n");
-    msg.level = LOG_DEBUG;
-    xQueueSend(usbQueue, (void *)&msg, 0);
-
-    int screen_w = lv_obj_get_width(lv_scr_act());
-    int screen_h = lv_obj_get_height(lv_scr_act());
-
-    snprintf(msg.body, 128, "Screen dimensions: %dx%d\r\n", screen_w, screen_h);
-    msg.level = LOG_DEBUG;
-    xQueueSend(usbQueue, (void *)&msg, 0);
-
-    lv_obj_t *container = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(container, screen_w, screen_h);
-    lv_obj_set_layout(container, LV_LAYOUT_NONE);
-
-    const uint16_t splash_width = epd->GetWidth();
-    const uint16_t splash_height = epd->GetHeight();
-    const uint16_t splash_stride = (splash_width + 7) / 8;
-    const size_t splash_img_size = splash_stride * splash_height;
-
-    uint8_t splash_data_prefixed[8 + splash_img_size];
-
-    memcpy(splash_data_prefixed, splash_palette, 8);
-
-    // Copy image data row-by-row to ensure correct stride alignment
-    for (uint16_t row = 0; row < splash_height; ++row)
-    {
-        for (uint16_t col_byte = 0; col_byte < splash_stride; ++col_byte)
-        {
-            size_t src_idx = row * splash_stride + col_byte;
-            size_t dst_idx = 8 + row * splash_stride + col_byte;
-            splash_data_prefixed[dst_idx] = pgm_read_byte(&splash_data[src_idx]);
-        }
-    }
-
-    // Debug: print first 16 bytes of splash_data_prefixed (palette + image)
-    char debug_buf[128];
-    int debug_len = 0;
-    debug_len += snprintf(debug_buf + debug_len, sizeof(debug_buf) - debug_len, "splash_data_prefixed: ");
-    for (int i = 0; i < 16 && i < (8 + splash_img_size); ++i)
-    {
-        debug_len += snprintf(debug_buf + debug_len, sizeof(debug_buf) - debug_len, "%02X ", splash_data_prefixed[i]);
-    }
-    debug_len += snprintf(debug_buf + debug_len, sizeof(debug_buf) - debug_len, "\r\n");
-    msg.level = LOG_DEBUG;
-    snprintf(msg.body, 128, "%s", debug_buf);
-    xQueueSend(usbQueue, (void *)&msg, 0);
-
-    static lv_img_dsc_t splash_img_dsc = {
-        {LV_IMAGE_HEADER_MAGIC, // header.magic
-         LV_COLOR_FORMAT_I1,    // header.cf
-         0,                     // header.flags
-         splash_width,          // header.width
-         splash_height,         // header.height
-         splash_stride,         // header.stride
-         0},                    // header.reserved
-        splash_img_size + 8,    // data length                                                                               // data_size
-        splash_data_prefixed,   // data
-    };
-
-    lv_obj_t *splash_img = lv_img_create(container);
-    lv_img_set_src(splash_img, &splash_img_dsc);
-
-    lv_obj_set_style_transform_pivot_x(splash_img, splash_width / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_transform_pivot_y(splash_img, splash_height / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align(splash_img, LV_ALIGN_CENTER, 0, 0);
-    lv_timer_handler();
-
-    vTaskDelay(pdMS_TO_TICKS(3000));
-
-    lv_obj_del_async(splash_img);
-    lv_obj_invalidate(lv_scr_act());
-
-    lv_obj_t *loading = lv_label_create(container);
-    lv_obj_set_style_text_color(loading, lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(loading, &lv_font_montserrat_20, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_align(loading, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_label_set_text(loading, "Loading.");
-
-    lv_obj_update_layout(loading);
-
-    lv_coord_t loading_w = lv_obj_get_width(loading);
-    lv_coord_t loading_h = lv_obj_get_height(loading);
-
-    lv_obj_set_style_transform_pivot_x(loading, loading_w / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_transform_pivot_y(loading, loading_h / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_transform_angle(loading, -900, LV_PART_MAIN | LV_STATE_DEFAULT);
-
-    lv_obj_update_layout(loading);
-
-    loading_w = lv_obj_get_width(loading);
-    loading_h = lv_obj_get_height(loading);
-
-    lv_obj_set_style_transform_pivot_x(loading, loading_w / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_transform_pivot_y(loading, loading_h / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
-
-    lv_obj_align(loading, LV_ALIGN_CENTER, 0, 0);
-
-    int count = 0;
     while (1)
     {
-        if (count <= 15)
-        {
-            if (count % 4 == 0)
-            {
-                int dots = ((count / 4) % 3) + 1;
-                switch (dots)
-                {
-                case 1:
-                    lv_label_set_text(loading, "Loading.");
-                    break;
-                case 2:
-                    lv_label_set_text(loading, "Loading..");
-                    break;
-                case 3:
-                    lv_label_set_text(loading, "Loading...");
-                    break;
-                }
-                lv_obj_update_layout(loading);
-
-                loading_w = lv_obj_get_width(loading);
-                loading_h = lv_obj_get_height(loading);
-
-                lv_obj_align(loading, LV_ALIGN_CENTER, 0, 0);
-            }
-            if (count == 15)
-            {
-                lv_obj_del_async(loading);
-                lv_obj_invalidate(lv_scr_act());
-                snprintf(msg.body, 128, "Display Task entering idle loop\r\n");
-                msg.level = LOG_DEBUG;
-                xQueueSend(usbQueue, (void *)&msg, 0);
-            }
-            count++;
-        }
 
         // TODO: create a queue to receive display update requests
 
-        uint32_t time_till_next = lv_timer_handler();
-        if (time_till_next == LV_NO_TIMER_READY)
-        {
-            time_till_next = LV_DEF_REFR_PERIOD;
-        }
-        vTaskDelay(pdMS_TO_TICKS(time_till_next));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
@@ -555,6 +601,9 @@ void buzzer_task(void *pvParameters)
 
     const int note_count = sizeof(doom_melody) / sizeof(doom_melody[0]);
     const int note_duration_ms = 150; // 200 BPM 1/8 notes
+
+    int ready_id = 7;
+    xQueueSend(launcherQueue, (void *)&ready_id, portMAX_DELAY); // signal launcher task that buzzer is ready
 
     while (1)
     {
@@ -668,6 +717,7 @@ void setup()
     Serial.println("Aerify Digital Business Card Starting...");
 
     usbQueue = xQueueCreate(MSG_QUEUE_LEN, sizeof(Message_t));
+    launcherQueue = xQueueCreate(MSG_QUEUE_LEN, sizeof(int));           // TODO: create a proper ready message struct if more data is needed
     displayQueue = xQueueCreate(MSG_QUEUE_LEN, sizeof(Message_t));      // TODO: add a display command struct
     buzzerQueue = xQueueCreate(MSG_QUEUE_LEN, sizeof(BuzzerCommand_t)); // TODO: update buzzer command to take melodies etc.
     sdQueue = xQueueCreate(MSG_QUEUE_LEN, sizeof(sd_request_t));
@@ -692,13 +742,15 @@ void setup()
 #else
     I2C0.begin(0x21); // Initialize I2C0 as slave with address 0x21
     I2C1.begin();
+    xTaskCreate(launcher_task, "Launcher Task", 4096, NULL, 1, &launcherTaskHandle);
     xTaskCreate(bms_task, "BMS Task", 1024, NULL, 1, &bmsTaskHandle);
     xTaskCreate(sd_task, "SD Task", 4096, NULL, 1, &sdTaskHandle);
-    xTaskCreate(display_task, "Display Task", 16384, NULL, 1, &displayTaskHandle);
+    xTaskCreate(display_task, "Display Task", 8192, NULL, 1, &displayTaskHandle);
     xTaskCreate(buzzer_task, "Buzzer Task", 1024, NULL, 1, &buzzerTaskHandle);
     xTaskCreate(button_task, "Button Task", 512, NULL, 1, &buttonTaskHandle);
     xTaskCreate(atecc_task, "ATECC Task", 1024, NULL, 1, &ateccTaskHandle);
     xTaskCreate(atsha_task, "ATSHA Task", 1024, NULL, 1, &atshaTaskHandle);
+    xTaskCreate(nfc_task, "NFC Task", 1024, NULL, 1, &nfcTaskHandle);
 #endif
 }
 

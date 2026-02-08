@@ -4,6 +4,18 @@
 #include "ePaperDisplay/epd_base.h"
 #include "FreeRTOS.h"
 #include "queue.h"
+#include <avr/pgmspace.h>
+
+static const unsigned char LVGL_PALETTE[8] PROGMEM =
+    {
+        0xff,
+        0xff,
+        0xff,
+        0xff,
+        0x00,
+        0x00,
+        0x00,
+        0xff};
 
 // Set the e-paper driver to use (Epd2in13 or Epd2in66)
 void lvgl_epaper_set_driver(EpdBase *drv);

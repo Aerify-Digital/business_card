@@ -1,12 +1,16 @@
 #ifndef AERID_LAUNCHER_H
 #define AERID_LAUNCHER_H
+#include "aerid_sdk/aerid_sdk.h"
+#include <stdint.h>
+#include <stddef.h>
+#include <FreeRTOS.h>
+#include <queue.h>
+#include "message.h"
+
 #ifdef __cplusplus
 extern "C"
 {
 #endif
-#include "aerid_sdk/aerid_sdk.h"
-#include <stdint.h>
-#include <stddef.h>
 
     typedef struct
     {
@@ -18,7 +22,7 @@ extern "C"
     } aerid_app_metadata_t;
 
     // Initialize the AerID launcher system
-    void aerid_launcher_init();
+    void aerid_launcher_init(QueueHandle_t debug_queue = nullptr, aerid_input_callback_t input_callback = nullptr);
 
     // Launch the AerID launcher interface
     void aerid_launcher_launch();

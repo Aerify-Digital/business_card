@@ -1,7 +1,15 @@
 #include "aerid_launcher.h"
+#include <lvgl.h>
 
-void aerid_launcher_init()
+static QueueHandle_t debug_queue_handle = nullptr;
+
+void aerid_launcher_init(QueueHandle_t debug_queue, aerid_input_callback_t input_callback)
 {
+    debug_queue_handle = debug_queue;
+    for (int i = 0; i < AERID_INPUT_COUNT; ++i)
+    {
+        aerid_input_register_callback((aerid_input_t)i, input_callback);
+    }
     // TODO: Implement launcher initialization
 }
 

@@ -29,10 +29,12 @@
 #include "aerid_sdk/aerid_sdk_internal.h"
 
 static QueueHandle_t usbQueue = NULL;
+static QueueHandle_t launcherQueue = NULL;
 static QueueHandle_t displayQueue = NULL;
 static QueueHandle_t buzzerQueue = NULL;
 
 static TaskHandle_t usbTaskHandle = NULL;
+static TaskHandle_t launcherTaskHandle = NULL;
 static TaskHandle_t bmsTaskHandle = NULL;
 static TaskHandle_t sdTaskHandle = NULL;
 static TaskHandle_t displayTaskHandle = NULL;
@@ -41,6 +43,8 @@ static TaskHandle_t buttonTaskHandle = NULL;
 static TaskHandle_t i2cScanTaskHandle = NULL;
 static TaskHandle_t ateccTaskHandle = NULL;
 static TaskHandle_t atshaTaskHandle = NULL;
+static TaskHandle_t nfcTaskHandle = NULL;
+
 SemaphoreHandle_t spi0_mutex = NULL;
 SemaphoreHandle_t i2c_default_mutex = NULL;
 SemaphoreHandle_t adc_mutex = NULL;
