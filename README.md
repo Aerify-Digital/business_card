@@ -1,5 +1,6 @@
 # AerID Business Card
 
+<img src="./img/aerid_render.png" alt="front v0" width="420"/><br/>
 The AerID is a fancy business card made by and for [Aerify Digital](https://aerify.digital).
 
 ## Features
