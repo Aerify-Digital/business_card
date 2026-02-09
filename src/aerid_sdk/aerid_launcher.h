@@ -22,7 +22,7 @@ extern "C"
     } aerid_app_metadata_t;
 
     // Initialize the AerID launcher system
-    void aerid_launcher_init(QueueHandle_t debug_queue = nullptr, aerid_input_callback_t input_callback = nullptr);
+    void aerid_launcher_init(QueueHandle_t debug_queue = nullptr);
 
     // Launch the AerID launcher interface
     void aerid_launcher_launch();

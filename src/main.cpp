@@ -124,40 +124,11 @@ void launcher_task(void *pvParameters)
     lv_obj_set_style_text_font(loading, &lv_font_montserrat_20, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_align(loading, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_label_set_text(loading, "Loading");
-
-    lv_obj_update_layout(loading);
-
-    lv_coord_t loading_w = lv_obj_get_width(loading);
-    lv_coord_t loading_h = lv_obj_get_height(loading);
-
-    lv_obj_set_style_transform_pivot_x(loading, loading_w / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_transform_pivot_y(loading, loading_h / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_transform_angle(loading, -900, LV_PART_MAIN | LV_STATE_DEFAULT);
-
-    lv_obj_update_layout(loading);
-
-    loading_w = lv_obj_get_width(loading);
-    loading_h = lv_obj_get_height(loading);
-
-    lv_obj_set_style_transform_pivot_x(loading, loading_w / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_transform_pivot_y(loading, loading_h / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
-
     lv_obj_align(loading, LV_ALIGN_CENTER, 0, 0);
     lv_timer_handler();
 
-    auto input_callback = [](aerid_input_t input, aerid_input_event_t event)
-    {
-        Message_t msg;
-        snprintf(msg.body, 128, "Received input event: input=%d event=%d\r\n", input, event);
-        msg.level = LOG_DEBUG;
-        xQueueSendFromISR(usbQueue, (void *)&msg, 0); // needs to be thread safe since it can be called from ISR, use FromISR version of xQueueSend
-    };
-
-    aerid_launcher_init(usbQueue, input_callback);
+    aerid_launcher_init(usbQueue);
     // TODO: Initialize the launcher
-    vTaskDelay(pdMS_TO_TICKS(3000)); // small delay emulate launcher initialization time
-
-    lv_obj_clean(lv_scr_act());
 
     TickType_t last_display_tick = xTaskGetTickCount();
 
@@ -376,6 +347,47 @@ void bms_task(void *pvParameters)
     msg.level = LOG_DEBUG;
     xQueueSend(usbQueue, (void *)&msg, 0);
 
+    int level = 0;
+    int charging = 0;
+    int voltage_mv = (int)(voltage * 1000);
+    if (voltage <= 3.0f)
+    {
+        level = 0;
+    }
+    else if (voltage >= 4.2f)
+    {
+        level = 100;
+    }
+    else
+    {
+        level = (int)(((voltage - 3.0f) / (4.2f - 3.0f)) * 100.0f);
+    }
+    if (strcmp(status, "EMPTY") == 0)
+    {
+        level = 0;
+        charging = 0;
+    }
+    else if (strcmp(status, "CHARGING_COMPLETE") == 0)
+    {
+        level = 100;
+        charging = 0;
+    }
+    else if (strcmp(status, "CHARGING") == 0)
+    {
+
+        charging = 1;
+    }
+    else if (strcmp(status, "FAULT_CONDITION") == 0)
+    {
+        level = 0;
+        charging = 0;
+    }
+    else if (strcmp(status, "DISCHARGING") == 0)
+    {
+        charging = 0;
+    }
+    aerid_battery_update_status(level, charging, voltage_mv);
+
     while (1)
     {
         status = read_status();
@@ -383,6 +395,43 @@ void bms_task(void *pvParameters)
         snprintf(msg.body, 128, ">battery_voltage:%.2fV\r\n", voltage);
         msg.level = LOG_DEBUG;
         xQueueSend(usbQueue, (void *)&msg, 0);
+        voltage_mv = (int)(voltage * 1000);
+        if (voltage <= 3.0f)
+        {
+            level = 0;
+        }
+        else if (voltage >= 4.2f)
+        {
+            level = 100;
+        }
+        else
+        {
+            level = (int)(((voltage - 3.0f) / (4.2f - 3.0f)) * 100.0f);
+        }
+        if (strcmp(status, "EMPTY") == 0)
+        {
+            level = 0;
+            charging = 0;
+        }
+        else if (strcmp(status, "CHARGING_COMPLETE") == 0)
+        {
+            level = 100;
+            charging = 0;
+        }
+        else if (strcmp(status, "CHARGING") == 0)
+        {
+            charging = 1;
+        }
+        else if (strcmp(status, "FAULT_CONDITION") == 0)
+        {
+            level = 0;
+            charging = 0;
+        }
+        else if (strcmp(status, "DISCHARGING") == 0)
+        {
+            charging = 0;
+        }
+        aerid_battery_update_status(level, charging, voltage_mv);
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }

@@ -1,29 +1,41 @@
 #include "aerid_sdk/aerid_battery.h"
 
+static int battery_level = 0;
+static int battery_charging = 0;
+static int battery_voltage = 0;
+static aerid_battery_status_callback_t status_callback = nullptr;
+
+void aerid_battery_update_status(int level, int charging, int voltage)
+{
+    battery_level = level;
+    battery_charging = charging;
+    battery_voltage = voltage;
+
+    if (status_callback)
+        status_callback(level, charging);
+}
+
 int aerid_battery_get_level()
 {
-    // TODO: Implement battery level retrieval
-    return -1;
+    return battery_level;
 }
 
 int aerid_battery_is_charging()
 {
-    // TODO: Implement charging status retrieval
-    return -1;
+    return battery_charging;
 }
 
 int aerid_battery_get_voltage()
 {
-    // TODO: Implement battery voltage retrieval
-    return -1;
+    return battery_voltage;
 }
 
 void aerid_battery_register_status_callback(aerid_battery_status_callback_t callback)
 {
-    // TODO: Implement callback registration
+    status_callback = callback;
 }
 
 void aerid_battery_clear_callback()
 {
-    // TODO: Implement callback clearing
+    status_callback = nullptr;
 }

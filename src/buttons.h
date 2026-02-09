@@ -12,7 +12,7 @@ const uint button_pins[BUTTON_COUNT] = {
 volatile uint32_t last_press_time[BUTTON_COUNT] = {0};
 
 #ifndef BTN_DEBOUNCE_MS
-#define BTN_DEBOUNCE_MS 200
+#define BTN_DEBOUNCE_MS 20
 #endif
 
 #endif

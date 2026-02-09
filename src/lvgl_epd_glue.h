@@ -6,11 +6,14 @@
 #include "queue.h"
 #include <avr/pgmspace.h>
 
-static const unsigned char LVGL_PALETTE[8] PROGMEM =
+// palette for LVGL 1bpp format (black and white)
+// must be prefixed to pixel data for images in LVGL's I1 format
+// and stripped in the flush callback before sending to e-paper driver
+const unsigned char LVGL_PALETTE[8] PROGMEM =
     {
-        0xff,
-        0xff,
-        0xff,
+        0xfe,
+        0xfe,
+        0xfe,
         0xff,
         0x00,
         0x00,
