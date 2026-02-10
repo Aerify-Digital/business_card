@@ -29,30 +29,28 @@ void update_battery_icon(int level, int charging)
 
     static const unsigned char *img_data = nullptr;
 
-    int battery_level = aerid_battery_get_level();
-
-    if (aerid_battery_is_charging())
+    if (charging)
     {
-        if (battery_level >= 88)
+        if (level >= 88)
             img_data = BATTERY_CHARGE_100_DATA;
-        else if (battery_level >= 63)
+        else if (level >= 63)
             img_data = BATTERY_CHARGE_75_DATA;
-        else if (battery_level >= 38)
+        else if (level >= 38)
             img_data = BATTERY_CHARGE_50_DATA;
-        else if (battery_level >= 13)
+        else if (level >= 13)
             img_data = BATTERY_CHARGE_25_DATA;
         else
             img_data = BATTERY_CHARGE_0_DATA;
     }
     else
     {
-        if (battery_level >= 88)
+        if (level >= 88)
             img_data = BATTERY_100_DATA;
-        else if (battery_level >= 63)
+        else if (level >= 63)
             img_data = BATTERY_75_DATA;
-        else if (battery_level >= 38)
+        else if (level >= 38)
             img_data = BATTERY_50_DATA;
-        else if (battery_level >= 13)
+        else if (level >= 13)
             img_data = BATTERY_25_DATA;
         else
             img_data = BATTERY_0_DATA;
@@ -85,7 +83,6 @@ void update_battery_icon(int level, int charging)
         lv_obj_align(battery_icon, LV_ALIGN_TOP_RIGHT, -6, 2);
     }
     lv_img_set_src(battery_icon, &img_dsc);
-    lv_obj_align(battery_icon, LV_ALIGN_TOP_RIGHT, -6, 2);
 }
 
 void battery_status_callback(int level, int charging)
@@ -101,7 +98,16 @@ void battery_status_callback(int level, int charging)
     {
         Serial.printf(">battery_level:%d%%,battery_charging:%d\r\n", level, charging);
     }
-    battery_update_needed = level != latest_battery_level || charging != latest_battery_charging;
+
+    if ((latest_battery_level >= 88 && level < 88) ||
+        (latest_battery_level >= 63 && level < 63) ||
+        (latest_battery_level >= 38 && level < 38) ||
+        (latest_battery_level >= 13 && level < 13) ||
+        (latest_battery_level < 13 && level >= 13) ||
+        charging != latest_battery_charging)
+    {
+        battery_update_needed = true;
+    }
     latest_battery_level = level;
     latest_battery_charging = charging;
 }
@@ -205,15 +211,14 @@ void aerid_launcher_register_app_launch_callback(aerid_launcher_app_launch_callb
 void aerid_launcher_tick()
 {
 
-    if (battery_update_needed)
-    {
-        update_battery_icon(latest_battery_level, latest_battery_charging);
-        battery_update_needed = false;
-    }
     TickType_t now = xTaskGetTickCount();
-
     if ((now - last_display_tick) >= LV_DEF_REFR_PERIOD * 3)
     {
+        if (battery_update_needed)
+        {
+            update_battery_icon(latest_battery_level, latest_battery_charging);
+            battery_update_needed = false;
+        }
         lv_timer_handler();
         last_display_tick = now;
     }
