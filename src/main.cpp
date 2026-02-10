@@ -115,7 +115,7 @@ void launcher_task(void *pvParameters)
     xQueueSend(usbQueue, (void *)&msg, 0);
 
     splash_screen();
-    vTaskDelay(pdMS_TO_TICKS(3000));
+    vTaskDelay(pdMS_TO_TICKS(3300));
 
     lv_obj_clean(lv_scr_act());
     lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -130,20 +130,9 @@ void launcher_task(void *pvParameters)
     aerid_launcher_init(usbQueue);
     // TODO: Initialize the launcher
 
-    TickType_t last_display_tick = xTaskGetTickCount();
-
     while (1)
     {
-        TickType_t now = xTaskGetTickCount();
-
-        if ((now - last_display_tick) >= LV_DEF_REFR_PERIOD)
-        {
-            lv_timer_handler();
-            last_display_tick = now;
-        }
-
-        // Handle other launcher events here (buttons, app logic, etc.)
-
+        aerid_launcher_tick();
         vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
@@ -245,6 +234,29 @@ void button_task(void *pvParameters)
     {
         vTaskDelay(pdMS_TO_TICKS(20));
     }
+}
+
+float voltageToPercentage(float voltage)
+{
+    static const float voltage_points[] = {4.20f, 4.10f, 3.95f, 3.85f, 3.70f, 3.50f, 3.30f, 3.00f};
+    static const float percent_points[] = {100.0f, 90.0f, 80.0f, 70.0f, 50.0f, 20.0f, 5.0f, 0.0f};
+    const int n = sizeof(voltage_points) / sizeof(voltage_points[0]);
+
+    if (voltage >= voltage_points[0])
+        return 100.0f;
+    if (voltage <= voltage_points[n - 1])
+        return 0.0f;
+
+    for (int i = 0; i < n - 1; ++i)
+    {
+        if (voltage <= voltage_points[i] && voltage > voltage_points[i + 1])
+        {
+            float v1 = voltage_points[i], v2 = voltage_points[i + 1];
+            float p1 = percent_points[i], p2 = percent_points[i + 1];
+            return p1 + (voltage - v1) * (p2 - p1) / (v2 - v1);
+        }
+    }
+    return 0.0f;
 }
 
 void bms_task(void *pvParameters)
@@ -350,18 +362,7 @@ void bms_task(void *pvParameters)
     int level = 0;
     int charging = 0;
     int voltage_mv = (int)(voltage * 1000);
-    if (voltage <= 3.0f)
-    {
-        level = 0;
-    }
-    else if (voltage >= 4.2f)
-    {
-        level = 100;
-    }
-    else
-    {
-        level = (int)(((voltage - 3.0f) / (4.2f - 3.0f)) * 100.0f);
-    }
+
     if (strcmp(status, "EMPTY") == 0)
     {
         level = 0;
@@ -374,7 +375,7 @@ void bms_task(void *pvParameters)
     }
     else if (strcmp(status, "CHARGING") == 0)
     {
-
+        level = (int)voltageToPercentage(voltage);
         charging = 1;
     }
     else if (strcmp(status, "FAULT_CONDITION") == 0)
@@ -384,6 +385,7 @@ void bms_task(void *pvParameters)
     }
     else if (strcmp(status, "DISCHARGING") == 0)
     {
+        level = (int)voltageToPercentage(voltage);
         charging = 0;
     }
     aerid_battery_update_status(level, charging, voltage_mv);
@@ -443,6 +445,41 @@ void usb_task(void *pvParameters)
     while (1)
     {
         xQueueReceive(usbQueue, (void *)&rcv_msg, portMAX_DELAY);
+
+        // Write log to SD card using aerid_fs_append_file if level is not LOG_NONE, and also print to Serial based on log levelS
+        if (rcv_msg.level != LOG_NONE)
+        {
+
+            const char *level_str = "UNKNOWN";
+            switch (rcv_msg.level)
+            {
+            case LOG_DEBUG:
+                level_str = "DEBUG";
+                break;
+            case LOG_INFO:
+                level_str = "INFO";
+                break;
+            case LOG_WARN:
+                level_str = "WARN";
+                break;
+            case LOG_ERROR:
+                level_str = "ERROR";
+                break;
+            default:
+                break;
+            }
+            /*
+
+            TODO: Re-enable SD card logging once we have a more robust solution for handling SD card unmounting and errors or whatever about it is crashing the usb_task
+            if (aerid_fs_is_mounted())
+            {
+                int result = aerid_fs_append_file("log.txt", (const uint8_t *)rcv_msg.body, strnlen(rcv_msg.body, 128));
+                if (result < 0)
+                {
+                    DEBUG_PRINTF("Failed to write log entry to SD card (error code %d)\r\n", result);
+                }
+            }*/
+        }
 
         switch (rcv_msg.level)
         {
@@ -577,6 +614,10 @@ void sd_task(void *pvParameters)
                 break;
             case SD_OP_WRITE:
                 req.length = writeSDFile(req.filename, req.buffer, req.length);
+                req.result = req.length >= 0;
+                break;
+            case SD_OP_APPEND:
+                req.length = appendSDFile(req.filename, req.buffer, req.length);
                 req.result = req.length >= 0;
                 break;
             case SD_OP_DELETE:
@@ -783,7 +824,7 @@ void setup()
     i2c_default_mutex = xSemaphoreCreateMutex();
     adc_mutex = xSemaphoreCreateMutex();
 
-    xTaskCreate(usb_task, "USB Task", 1024, NULL, 1, &usbTaskHandle);
+    xTaskCreate(usb_task, "USB Task", 4096, NULL, 1, &usbTaskHandle);
 #ifdef I2C_SCAN
     xTaskCreate(i2c_scan_task, "I2C Scan Task", 1024, NULL, 1, &i2cScanTaskHandle);
     I2C0.begin();

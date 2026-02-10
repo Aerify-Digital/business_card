@@ -1,4 +1,5 @@
 #include "aerid_launcher.h"
+#include "lvgl_epd_glue.h"
 #include <vector>
 #include <lvgl.h>
 #include <queue.h>
@@ -8,6 +9,102 @@ static QueueHandle_t debug_queue_handle = nullptr;
 static aerid_input_callback_t launcher_input_callback = nullptr;
 
 static std::vector<aerid_app_metadata_t> registered_apps;
+
+static TickType_t last_display_tick = 0;
+
+static volatile bool battery_update_needed = false;
+static volatile int latest_battery_level = 0;
+static volatile int latest_battery_charging = 0;
+
+static lv_img_dsc_t img_dsc;
+static lv_obj_t *battery_icon = nullptr;
+static uint8_t battery_icon_data[8 + ((50 + 7) / 8) * 24]; // move to file scope
+
+void update_battery_icon(int level, int charging)
+{
+    const uint16_t img_stride = (50 + 7) / 8;
+    const size_t img_size = img_stride * 24;
+
+    memcpy(battery_icon_data, LVGL_PALETTE, 8);
+
+    static const unsigned char *img_data = nullptr;
+
+    int battery_level = aerid_battery_get_level();
+
+    if (aerid_battery_is_charging())
+    {
+        if (battery_level >= 88)
+            img_data = BATTERY_CHARGE_100_DATA;
+        else if (battery_level >= 63)
+            img_data = BATTERY_CHARGE_75_DATA;
+        else if (battery_level >= 38)
+            img_data = BATTERY_CHARGE_50_DATA;
+        else if (battery_level >= 13)
+            img_data = BATTERY_CHARGE_25_DATA;
+        else
+            img_data = BATTERY_CHARGE_0_DATA;
+    }
+    else
+    {
+        if (battery_level >= 88)
+            img_data = BATTERY_100_DATA;
+        else if (battery_level >= 63)
+            img_data = BATTERY_75_DATA;
+        else if (battery_level >= 38)
+            img_data = BATTERY_50_DATA;
+        else if (battery_level >= 13)
+            img_data = BATTERY_25_DATA;
+        else
+            img_data = BATTERY_0_DATA;
+    }
+
+    for (uint16_t row = 0; row < 24; ++row)
+    {
+        for (uint16_t col_byte = 0; col_byte < img_stride; ++col_byte)
+        {
+            size_t src_idx = row * img_stride + col_byte;
+            size_t dst_idx = 8 + row * img_stride + col_byte;
+            battery_icon_data[dst_idx] = pgm_read_byte(&img_data[src_idx]);
+        }
+    }
+
+    img_dsc.header =
+        {LV_IMAGE_HEADER_MAGIC,       // header.magic
+         LV_COLOR_FORMAT_I1,          // header.cf
+         0,                           // header.flags
+         50,                          // header.width
+         24,                          // header.height
+         img_stride,                  // header.stride
+         0};                          // header.reserved
+    img_dsc.data_size = img_size + 8; // data length
+    img_dsc.data = battery_icon_data; // data
+
+    if (!battery_icon)
+    {
+        battery_icon = lv_img_create(lv_scr_act());
+        lv_obj_align(battery_icon, LV_ALIGN_TOP_RIGHT, -6, 2);
+    }
+    lv_img_set_src(battery_icon, &img_dsc);
+    lv_obj_align(battery_icon, LV_ALIGN_TOP_RIGHT, -6, 2);
+}
+
+void battery_status_callback(int level, int charging)
+{
+    if (debug_queue_handle)
+    {
+        Message_t msg;
+        snprintf(msg.body, 128, ">battery_level:%d%%,battery_charging:%d\r\n", level, charging);
+        msg.level = LOG_DEBUG;
+        xQueueSendFromISR(debug_queue_handle, (void *)&msg, 0); // needs to be thread safe since it can be called from ISR, use FromISR version of xQueueSend
+    }
+    else
+    {
+        Serial.printf(">battery_level:%d%%,battery_charging:%d\r\n", level, charging);
+    }
+    battery_update_needed = level != latest_battery_level || charging != latest_battery_charging;
+    latest_battery_level = level;
+    latest_battery_charging = charging;
+}
 
 auto input_callback = [](aerid_input_t input, aerid_input_event_t event)
 {
@@ -26,6 +123,7 @@ auto input_callback = [](aerid_input_t input, aerid_input_event_t event)
 
 void aerid_launcher_init(QueueHandle_t debug_queue)
 {
+    last_display_tick = xTaskGetTickCount();
     launcher_input_callback = input_callback;
     debug_queue_handle = debug_queue;
     for (int i = 0; i < AERID_INPUT_COUNT; ++i)
@@ -34,14 +132,11 @@ void aerid_launcher_init(QueueHandle_t debug_queue)
     }
 
     registered_apps = std::vector<aerid_app_metadata_t>();
-    lv_obj_clean(lv_scr_act());
-    lv_obj_t *dummy_battery_area = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(dummy_battery_area, 88, 22);
-    lv_obj_align(dummy_battery_area, LV_ALIGN_TOP_RIGHT, 0, 0);
-    lv_obj_set_style_bg_color(dummy_battery_area, lv_color_hex(0xffffff), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(dummy_battery_area, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    vTaskDelay(pdMS_TO_TICKS(1320)); // 330 * 4 ms delay to give the display time
+    aerid_battery_register_status_callback(battery_status_callback);
+    battery_update_needed = true; // force update on init
+
+    lv_obj_clean(lv_scr_act());
     lv_timer_handler();
 
     // TODO: Implement launcher initialization
@@ -105,4 +200,21 @@ int aerid_launcher_get_metadata_by_id(const char *app_id, aerid_app_metadata_t *
 void aerid_launcher_register_app_launch_callback(aerid_launcher_app_launch_callback_t callback)
 {
     // TODO: Implement callback registration
+}
+
+void aerid_launcher_tick()
+{
+
+    if (battery_update_needed)
+    {
+        update_battery_icon(latest_battery_level, latest_battery_charging);
+        battery_update_needed = false;
+    }
+    TickType_t now = xTaskGetTickCount();
+
+    if ((now - last_display_tick) >= LV_DEF_REFR_PERIOD * 3)
+    {
+        lv_timer_handler();
+        last_display_tick = now;
+    }
 }

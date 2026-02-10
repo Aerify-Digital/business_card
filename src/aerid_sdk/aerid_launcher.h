@@ -64,6 +64,8 @@ extern "C"
     // Register a callback function for app launch events
     void aerid_launcher_register_app_launch_callback(aerid_launcher_app_launch_callback_t callback);
 
+    void aerid_launcher_tick();
+
 #ifdef __cplusplus
 }
 #endif

@@ -18,6 +18,11 @@ extern "C"
     // All file operations are relative to the app's data directory
     int aerid_fs_write_file(const char *filename, const uint8_t *data, size_t len);
 
+    // Append data to a file (creates the file if it doesn't exist)
+    // Returns the number of bytes written, or -1 on error
+    // All file operations are relative to the app's data directory
+    int aerid_fs_append_file(const char *filename, const uint8_t *data, size_t len);
+
     // Delete a file
     // All file operations are relative to the app's data directory
     bool aerid_fs_delete_file(const char *filename);

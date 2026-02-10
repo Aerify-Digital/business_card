@@ -1,6 +1,7 @@
-#ifndef SD_CARD_H
 
+#ifndef SD_CARD_H
 #define SD_CARD_H
+
 #include <Arduino.h>
 #include "SdFat.h"
 #include "pindefs.h"
@@ -8,10 +9,16 @@
 
 static QueueHandle_t sdQueue = NULL;
 
+// declare SD_ERR_TOO_LARGE using a variable
+#define SD_RW_MAX_CHUNK (4096)
+#define SD_FILE_MAX_SIZE (65536)
+#define SD_ERR_TOO_LARGE (-2)
+
 typedef enum
 {
     SD_OP_READ,
     SD_OP_WRITE,
+    SD_OP_APPEND,
     SD_OP_DELETE,
     SD_OP_RENAME
 } sd_op_t;
@@ -43,13 +50,21 @@ FsFile openSDFile(const char *filename, int mode = FILE_READ);
 
 /**
  * @brief Read a file from the SD card into a buffer
+ * @return Number of bytes read, or -1 on error, or SD_ERR_TOO_LARGE if file exceeds SD_FILE_MAX_SIZE
  */
 int readSDFile(const char *filename, uint8_t *buffer, size_t max_len);
 
 /**
  * @brief Write data to a file on the SD card
+ * @return Number of bytes written, or -1 on error, or SD_ERR_TOO_LARGE if data/file exceeds SD_FILE_MAX_SIZE
  */
 int writeSDFile(const char *filename, const uint8_t *data, size_t len);
+
+/**
+ * @brief Append data to a file on the SD card
+ * @return Number of bytes written, or -1 on error, or SD_ERR_TOO_LARGE if file would exceed SD_FILE_MAX_SIZE
+ */
+int appendSDFile(const char *filename, const uint8_t *data, size_t len);
 
 /**
  * @brief Delete a file from the SD card

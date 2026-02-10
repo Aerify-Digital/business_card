@@ -4,6 +4,7 @@
 #include "aerid_crypto.h"
 #include "aerid_display.h"
 #include "aerid_fs.h"
+#include "aerid_icons.h"
 #include "aerid_input.h"
 #include "aerid_log.h"
 #include "aerid_nfc.h"

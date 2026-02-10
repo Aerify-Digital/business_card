@@ -1,8 +1,8 @@
 #include "aerid_sdk/aerid_battery.h"
 
-static int battery_level = 0;
-static int battery_charging = 0;
-static int battery_voltage = 0;
+static volatile int battery_level = 0;
+static volatile int battery_charging = 0;
+static volatile int battery_voltage = 0;
 static aerid_battery_status_callback_t status_callback = nullptr;
 
 void aerid_battery_update_status(int level, int charging, int voltage)

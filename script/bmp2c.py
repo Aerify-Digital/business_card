@@ -1,5 +1,6 @@
 from PIL import Image
 import sys
+import os
 
 def bmp_to_c_array(filename, varname):
     img = Image.open(filename).convert('1')
@@ -17,12 +18,41 @@ def bmp_to_c_array(filename, varname):
                 else:
                     byte <<= 1
             byte_array.append(byte)
-    print(f'const unsigned char {varname}[] = {{')
+
+    # Prepare array data as a string
+    array_data = ''
     for i, b in enumerate(byte_array):
-        print(f'0x{b:02X},', end='')
+        array_data += f'0x{b:02X},'
         if (i + 1) % 16 == 0:
-            print()
-    print('};')
+            array_data += '\n'
+
+    # File base name (without extension)
+    base = os.path.splitext(os.path.basename(filename))[0]
+    header_file = f"{base}.h"
+    source_file = f"{base}.cpp"
+
+
+    # Header content
+    header_content = f"""#pragma once
+#include <stdint.h>
+extern const unsigned char {varname}[];
+"""
+
+    # Source content
+    source_content = f"""#include "{header_file}"
+#include <avr/pgmspace.h>
+const unsigned char {varname}[] PROGMEM = {{
+    {array_data}
+}};
+"""
+
+    # Write header file
+    with open(header_file, "w") as h:
+        h.write(header_content)
+
+    # Write source file
+    with open(source_file, "w") as c:
+        c.write(source_content)
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:
