@@ -18,12 +18,12 @@ static volatile int latest_battery_charging = 0;
 
 static lv_img_dsc_t img_dsc;
 static lv_obj_t *battery_icon = nullptr;
-static uint8_t battery_icon_data[8 + ((50 + 7) / 8) * 24]; // move to file scope
+static uint8_t battery_icon_data[8 + ((42 + 7) / 8) * 20]; // move to file scope
 
 void update_battery_icon(int level, int charging)
 {
-    const uint16_t img_stride = (50 + 7) / 8;
-    const size_t img_size = img_stride * 24;
+    const uint16_t img_stride = (42 + 7) / 8;
+    const size_t img_size = img_stride * 20;
 
     memcpy(battery_icon_data, LVGL_PALETTE, 8);
 
@@ -56,7 +56,7 @@ void update_battery_icon(int level, int charging)
             img_data = BATTERY_0_DATA;
     }
 
-    for (uint16_t row = 0; row < 24; ++row)
+    for (uint16_t row = 0; row < 20; ++row)
     {
         for (uint16_t col_byte = 0; col_byte < img_stride; ++col_byte)
         {
@@ -70,8 +70,8 @@ void update_battery_icon(int level, int charging)
         {LV_IMAGE_HEADER_MAGIC,       // header.magic
          LV_COLOR_FORMAT_I1,          // header.cf
          0,                           // header.flags
-         50,                          // header.width
-         24,                          // header.height
+         42,                          // header.width
+         20,                          // header.height
          img_stride,                  // header.stride
          0};                          // header.reserved
     img_dsc.data_size = img_size + 8; // data length

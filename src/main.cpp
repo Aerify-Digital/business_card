@@ -49,10 +49,6 @@ void splash_screen()
         }
     }
 
-    lv_obj_t *container = lv_obj_create(lv_scr_act());
-    lv_obj_set_size(container, screen_w, screen_h);
-    lv_obj_set_layout(container, LV_LAYOUT_NONE);
-
     static lv_img_dsc_t splash_img_dsc = {
         {LV_IMAGE_HEADER_MAGIC, // header.magic
          LV_COLOR_FORMAT_I1,    // header.cf
@@ -65,7 +61,7 @@ void splash_screen()
         splash_data_prefixed,   // data
     };
 
-    lv_obj_t *splash_img = lv_img_create(container);
+    lv_obj_t *splash_img = lv_img_create(lv_scr_act());
     lv_img_set_src(splash_img, &splash_img_dsc);
 
     lv_obj_set_style_transform_pivot_x(splash_img, screen_w / 2, LV_PART_MAIN | LV_STATE_DEFAULT);

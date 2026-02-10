@@ -215,15 +215,21 @@ void Epd2in66::Reset(void)
 
 int Epd2in66::Init(char Mode)
 {
-    int count;
+
+    DelayMs(10);
     Reset();
+    WaitUntilIdle();
+    SendCommand(0x12); // soft  reset
+    WaitUntilIdle();
+
+    int count;
     if (Mode == FULL)
     {
-        Reset();
+        SendCommand(0x01); // Set display size and driver output control
+        SendData((EPD_HEIGHT - 1) & 0xff);
+        SendData(((EPD_HEIGHT - 1) >> 8) & 0xff);
+        SendData(0x00);
 
-        WaitUntilIdle();
-        SendCommand(0x12); // soft  reset
-        WaitUntilIdle();
         /*	Y increment, X increment	*/
         SendCommand(0x11);
         SendData(0x03);
@@ -243,11 +249,6 @@ int Epd2in66::Init(char Mode)
     }
     else if (Mode == FAST)
     {
-        Reset();
-        WaitUntilIdle();
-        SendCommand(0x12); // soft reset
-        WaitUntilIdle();
-
         SendCommand(0x18); // Read built-in temperature sensor
         SendData(0x80);
 
@@ -273,11 +274,6 @@ int Epd2in66::Init(char Mode)
     }
     else if (Mode == PART)
     {
-        Reset();
-        WaitUntilIdle();
-        SendCommand(0x12); // soft  reset
-        WaitUntilIdle();
-
         Lut((unsigned char *)WF_PARTIAL);
         SendCommand(0x37);
         SendData(0x00);
