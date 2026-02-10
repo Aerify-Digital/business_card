@@ -13,4 +13,7 @@
 #include "icons/battery_charge_75.h"
 #include "icons/battery_charge_100.h"
 
+#include "icons/ad_logo_32.h"
+#include "icons/ad_logo_64.h"
+
 #endif
